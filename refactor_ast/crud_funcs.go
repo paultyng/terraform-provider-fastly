@@ -1,29 +1,18 @@
 package main
 
 import (
-	"fmt"
 	"go/ast"
 	"log"
 
 	"golang.org/x/tools/go/ast/astutil"
 )
 
-func generateNewCRUDFuncs(file *ast.File) (map[string]*ast.FuncDecl, error) {
-	// Search file for a function named Process
-	processFunc := findProcessFunc(file)
-	if processFunc == nil {
-		return nil, fmt.Errorf("no Process function found in %s", file.Name)
-	}
-
-	// Extract the method receiver to get the name of the struct for the AttributeDefinition
-	attributeHandlerName := getFuncRecv(processFunc)
-	log.Println("Found Process func with receiver", attributeHandlerName)
-
+func generateNewCRUDFunctions(attributeHandlerName string, processFunc *ast.FuncDecl) (map[string]*ast.FuncDecl, error) {
 	// Create new functions for the missing CRUD methods
-	funcs := map[string]*ast.FuncDecl{}
-	funcs["Create"] = newCRUDFunc(attributeHandlerName, "Create")
-	funcs["Update"] = newCRUDFunc(attributeHandlerName, "Update")
-	funcs["Delete"] = newCRUDFunc(attributeHandlerName, "Delete")
+	functions := map[string]*ast.FuncDecl{}
+	functions["Create"] = newCRUDFunc(attributeHandlerName, "Create")
+	functions["Update"] = newCRUDFunc(attributeHandlerName, "Update")
+	functions["Delete"] = newCRUDFunc(attributeHandlerName, "Delete")
 
 	// Search the Process function for For loops, to pull the bodies into the CRUD functions
 	// For loops should be of the format "for x, y := range diffResult.z {"
@@ -39,7 +28,7 @@ func generateNewCRUDFuncs(file *ast.File) (map[string]*ast.FuncDecl, error) {
 						log.Printf("Found for loop for diffResult.%s in Process func\n", selector.Sel.String())
 						// Modify body and add it to the corresponding function
 						funcBody := tweakFuncBody(forLoop.Body)
-						funcs[getFuncName(selector.Sel.String())].Body = funcBody
+						functions[getFuncName(selector.Sel.String())].Body = funcBody
 					}
 				}
 			}
@@ -48,7 +37,7 @@ func generateNewCRUDFuncs(file *ast.File) (map[string]*ast.FuncDecl, error) {
 	})
 
 	// If any of the loops weren't found, populate the function with "return nil"
-	for _, f := range funcs {
+	for _, f := range functions {
 		if f.Body == nil {
 			f.Body = &ast.BlockStmt{
 				List: []ast.Stmt{
@@ -58,23 +47,7 @@ func generateNewCRUDFuncs(file *ast.File) (map[string]*ast.FuncDecl, error) {
 		}
 	}
 
-	return funcs, nil
-}
-
-// Loop through file and find a function named Process
-func findProcessFunc(file *ast.File) *ast.FuncDecl {
-	var processFunc *ast.FuncDecl
-	for _, decl := range file.Decls {
-		function, ok := decl.(*ast.FuncDecl)
-		if !ok {
-			continue
-		}
-
-		if function.Name.Name == "Process" {
-			processFunc = function
-		}
-	}
-	return processFunc
+	return functions, nil
 }
 
 // Makes requisite tweaks to the body of the For loop to adapt it to being a function body
@@ -163,13 +136,13 @@ func newCRUDFunc(recv, name string) *ast.FuncDecl {
 				},
 			},
 		},
-		Name: &ast.Ident{Name: name},
+		Name: ast.NewIdent(name),
 		Type: &ast.FuncType{
 			Params: getFuncParams(name),
 			Results: &ast.FieldList{
 				List: []*ast.Field{
 					{
-						Type: &ast.Ident{Name: "error"},
+						Type: ast.NewIdent("error"),
 					},
 				},
 			},
