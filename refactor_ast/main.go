@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"log"
+	"strings"
 )
 
 const filepathBase = "/Users/bengesoff/code/clients/fastly/terraform-provider-fastly/"
@@ -76,17 +77,22 @@ func transformFile(filename string) (string, error) {
 	// Search file for a function named Process
 	processFunc := findFunc(file, "Process")
 	if processFunc == nil {
-		return "", fmt.Errorf("no Process function found in %s", file.Name)
+		return "", fmt.Errorf("no Process function found in %s", filename)
 	}
 
 	registerFunc := findFunc(file, "Register")
 	if registerFunc == nil {
-		return "", fmt.Errorf("no Register function found in %s", file.Name)
+		return "", fmt.Errorf("no Register function found in %s", filename)
 	}
 
 	readFunc := findFunc(file, "Read")
 	if readFunc == nil {
-		return "", fmt.Errorf("no Read function found in %s", file.Name)
+		return "", fmt.Errorf("no Read function found in %s", filename)
+	}
+
+	newFunc := findFunc(file, "New")
+	if newFunc == nil {
+		return "", fmt.Errorf("no New* function found in %s", filename)
 	}
 
 	// Extract the method receiver to get the name of the struct for the AttributeDefinition
@@ -94,6 +100,7 @@ func transformFile(filename string) (string, error) {
 	log.Println("Found Process func with receiver", attributeHandlerName)
 	log.Println("Found Register func")
 	log.Println("Found Read func")
+	log.Println("Found New* func")
 
 	crudFunctions, err := generateNewCRUDFunctions(attributeHandlerName, processFunc)
 	if err != nil {
@@ -117,6 +124,9 @@ func transformFile(filename string) (string, error) {
 	modifyReadFunc(readFunc)
 	log.Println("Modified Read function")
 
+	modifyNewFunc(newFunc)
+	log.Println("Modified New* function")
+
 	var buf bytes.Buffer
 	err = format.Node(&buf, fileSet, file)
 	if err != nil {
@@ -126,7 +136,7 @@ func transformFile(filename string) (string, error) {
 	return buf.String(), nil
 }
 
-// Loop through file and find a function with a given name
+// Loop through file and find a function with a name containing the given string
 func findFunc(file *ast.File, name string) *ast.FuncDecl {
 	var processFunc *ast.FuncDecl
 	for _, decl := range file.Decls {
@@ -135,7 +145,7 @@ func findFunc(file *ast.File, name string) *ast.FuncDecl {
 			continue
 		}
 
-		if function.Name.Name == name {
+		if strings.Contains(function.Name.Name, name) {
 			processFunc = function
 		}
 	}
