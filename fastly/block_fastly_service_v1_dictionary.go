@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceDictionary(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *DictionaryServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *DictionaryServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	oldDictVal, newDictVal := d.GetChange(h.GetKey())
 
 	if oldDictVal == nil {
@@ -112,7 +113,7 @@ func (h *DictionaryServiceAttributeHandler) Process(d *schema.ResourceData, late
 	return nil
 }
 
-func (h *DictionaryServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *DictionaryServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	log.Printf("[DEBUG] Refreshing Dictionaries for (%s)", d.Id())
 	dictList, err := conn.ListDictionaries(&gofastly.ListDictionariesInput{
 		ServiceID:      d.Id(),

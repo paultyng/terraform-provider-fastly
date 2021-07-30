@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceLoggingCloudfiles(sa ServiceMetadata) ServiceAttributeDefinition 
 	}
 }
 
-func (h *CloudfilesServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *CloudfilesServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 	ol, nl := d.GetChange(h.GetKey())
 
@@ -147,7 +148,7 @@ func (h *CloudfilesServiceAttributeHandler) Process(d *schema.ResourceData, late
 	return nil
 }
 
-func (h *CloudfilesServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *CloudfilesServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// Refresh Cloud Files.
 	log.Printf("[DEBUG] Refreshing Cloud Files logging endpoints for (%s)", d.Id())
 	cloudfilesList, err := conn.ListCloudfiles(&gofastly.ListCloudfilesInput{

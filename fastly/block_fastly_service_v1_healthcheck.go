@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceHealthCheck(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *HealthCheckServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *HealthCheckServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	oh, nh := d.GetChange(h.GetKey())
 	if oh == nil {
 		oh = new(schema.Set)
@@ -159,7 +160,7 @@ func (h *HealthCheckServiceAttributeHandler) Process(d *schema.ResourceData, lat
 	return nil
 }
 
-func (h *HealthCheckServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *HealthCheckServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	log.Printf("[DEBUG] Refreshing Healthcheck for (%s)", d.Id())
 	healthcheckList, err := conn.ListHealthChecks(&gofastly.ListHealthChecksInput{
 		ServiceID:      d.Id(),

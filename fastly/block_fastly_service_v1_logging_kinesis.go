@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceLoggingKinesis(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *KinesisServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *KinesisServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 	ol, nl := d.GetChange(h.GetKey())
 
@@ -132,7 +133,7 @@ func (h *KinesisServiceAttributeHandler) Process(d *schema.ResourceData, latestV
 	return nil
 }
 
-func (h *KinesisServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *KinesisServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// Refresh Kinesis.
 	log.Printf("[DEBUG] Refreshing Kinesis logging endpoints for (%s)", d.Id())
 	kinesisList, err := conn.ListKinesis(&gofastly.ListKinesisInput{

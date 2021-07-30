@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceDomain(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *DomainServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *DomainServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	od, nd := d.GetChange(h.GetKey())
 	if od == nil {
 		od = new(schema.Set)
@@ -117,7 +118,7 @@ func (h *DomainServiceAttributeHandler) Process(d *schema.ResourceData, latestVe
 	return nil
 }
 
-func (h *DomainServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *DomainServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// TODO: update go-fastly to support an ActiveVersion struct, which contains
 	// domain and backend info in the response. Here we do 2 additional queries
 	// to find out that info

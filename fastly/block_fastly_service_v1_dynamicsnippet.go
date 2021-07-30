@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -22,7 +23,7 @@ func NewServiceDynamicSnippet(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *DynamicSnippetServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *DynamicSnippetServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	// Note: as above with Gzip and S3 logging, we don't utilize the PUT
 	// endpoint to update a VCL dynamic snippet, we simply destroy it and create a new one.
 	oldDynamicSnippetVal, newDynamicSnippetVal := d.GetChange(h.GetKey())
@@ -131,7 +132,7 @@ func (h *DynamicSnippetServiceAttributeHandler) Process(d *schema.ResourceData, 
 	return nil
 }
 
-func (h *DynamicSnippetServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *DynamicSnippetServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	log.Printf("[DEBUG] Refreshing VCL Snippets for (%s)", d.Id())
 	snippetList, err := conn.ListSnippets(&gofastly.ListSnippetsInput{
 		ServiceID:      d.Id(),

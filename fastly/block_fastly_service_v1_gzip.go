@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -22,7 +23,7 @@ func NewServiceGzip(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *GzipServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *GzipServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	og, ng := d.GetChange(h.GetKey())
 	if og == nil {
 		og = new(schema.Set)
@@ -167,7 +168,7 @@ func (h *GzipServiceAttributeHandler) Process(d *schema.ResourceData, latestVers
 	return nil
 }
 
-func (h *GzipServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *GzipServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	log.Printf("[DEBUG] Refreshing Gzips for (%s)", d.Id())
 	gzipsList, err := conn.ListGzips(&gofastly.ListGzipsInput{
 		ServiceID:      d.Id(),

@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceLoggingLogshuttle(sa ServiceMetadata) ServiceAttributeDefinition 
 	}
 }
 
-func (h *LogshuttleServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *LogshuttleServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 	ol, nl := d.GetChange(h.GetKey())
 
@@ -123,7 +124,7 @@ func (h *LogshuttleServiceAttributeHandler) Process(d *schema.ResourceData, late
 	return nil
 }
 
-func (h *LogshuttleServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *LogshuttleServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// Refresh Log Shuttle.
 	log.Printf("[DEBUG] Refreshing Log Shuttle logging endpoints for (%s)", d.Id())
 	logshuttleList, err := conn.ListLogshuttles(&gofastly.ListLogshuttlesInput{

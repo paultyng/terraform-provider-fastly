@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -22,7 +23,7 @@ func NewServiceVCL(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *VCLServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *VCLServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	// Note: as above with Gzip and S3 logging, we don't utilize the PUT
 	// endpoint to update a VCL, we simply destroy it and create a new one.
 	oldVCLVal, newVCLVal := d.GetChange(h.GetKey())
@@ -118,7 +119,7 @@ func (h *VCLServiceAttributeHandler) Process(d *schema.ResourceData, latestVersi
 	return nil
 }
 
-func (h *VCLServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *VCLServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	log.Printf("[DEBUG] Refreshing VCLs for (%s)", d.Id())
 	vclList, err := conn.ListVCLs(&gofastly.ListVCLsInput{
 		ServiceID:      d.Id(),

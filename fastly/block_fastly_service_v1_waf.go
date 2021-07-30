@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -56,7 +57,7 @@ func (h *WAFServiceAttributeHandler) Register(s *schema.Resource) error {
 	return nil
 }
 
-func (h *WAFServiceAttributeHandler) Process(d *schema.ResourceData, serviceVersion int, conn *gofastly.Client) error {
+func (h *WAFServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, serviceVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 	oldWAFVal, newWAFVal := d.GetChange(h.GetKey())
 
@@ -95,7 +96,7 @@ func (h *WAFServiceAttributeHandler) Process(d *schema.ResourceData, serviceVers
 	return nil
 }
 
-func (h *WAFServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *WAFServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// refresh WAFs
 	log.Printf("[DEBUG] Refreshing WAFs for (%s)", d.Id())
 	wafList, err := conn.ListWAFs(&gofastly.ListWAFsInput{

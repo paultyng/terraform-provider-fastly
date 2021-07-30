@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceLoggingOpenstack(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *OpenstackServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *OpenstackServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 	ol, nl := d.GetChange(h.GetKey())
 
@@ -150,7 +151,7 @@ func (h *OpenstackServiceAttributeHandler) Process(d *schema.ResourceData, lates
 	return nil
 }
 
-func (h *OpenstackServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *OpenstackServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// Refresh OpenStack.
 	log.Printf("[DEBUG] Refreshing OpenStack logging endpoints for (%s)", d.Id())
 	openstackList, err := conn.ListOpenstack(&gofastly.ListOpenstackInput{

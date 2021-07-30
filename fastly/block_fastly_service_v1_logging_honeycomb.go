@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceLoggingHoneycomb(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *HoneycombServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *HoneycombServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 	ol, nl := d.GetChange(h.GetKey())
 
@@ -123,7 +124,7 @@ func (h *HoneycombServiceAttributeHandler) Process(d *schema.ResourceData, lates
 	return nil
 }
 
-func (h *HoneycombServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *HoneycombServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// Refresh Honeycomb.
 	log.Printf("[DEBUG] Refreshing Honeycomb logging endpoints for (%s)", d.Id())
 	honeycombList, err := conn.ListHoneycombs(&gofastly.ListHoneycombsInput{

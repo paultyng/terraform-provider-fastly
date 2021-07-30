@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -82,7 +83,7 @@ func (h *ScalyrServiceAttributeHandler) Register(s *schema.Resource) error {
 	return nil
 }
 
-func (h *ScalyrServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *ScalyrServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 	oldLogCfg, newLogCfg := d.GetChange(h.GetKey())
 
@@ -184,7 +185,7 @@ func (h *ScalyrServiceAttributeHandler) Process(d *schema.ResourceData, latestVe
 	return nil
 }
 
-func (h *ScalyrServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *ScalyrServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// Refresh Scalyr.
 	log.Printf("[DEBUG] Refreshing Scalyr logging endpoints for (%s)", d.Id())
 	scalyrList, err := conn.ListScalyrs(&gofastly.ListScalyrsInput{

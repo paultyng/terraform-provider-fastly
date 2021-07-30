@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceLoggingDatadog(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *DatadogServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *DatadogServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 	od, nd := d.GetChange(h.GetKey())
 
@@ -123,7 +124,7 @@ func (h *DatadogServiceAttributeHandler) Process(d *schema.ResourceData, latestV
 	return nil
 }
 
-func (h *DatadogServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *DatadogServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// Refresh Datadog.
 	log.Printf("[DEBUG] Refreshing Datadog logging endpoints for (%s)", d.Id())
 	datadogList, err := conn.ListDatadog(&gofastly.ListDatadogInput{

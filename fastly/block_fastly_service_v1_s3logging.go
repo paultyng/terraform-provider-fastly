@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -22,7 +23,7 @@ func NewServiceS3Logging(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *S3LoggingServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *S3LoggingServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 
 	os, ns := d.GetChange(h.GetKey())
@@ -164,7 +165,7 @@ func (h *S3LoggingServiceAttributeHandler) Process(d *schema.ResourceData, lates
 	return nil
 }
 
-func (h *S3LoggingServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *S3LoggingServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// Refresh S3.
 	log.Printf("[DEBUG] Refreshing S3 Logging for (%s)", d.Id())
 	s3List, err := conn.ListS3s(&gofastly.ListS3sInput{

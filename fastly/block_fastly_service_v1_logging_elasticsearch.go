@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceLoggingElasticSearch(sa ServiceMetadata) ServiceAttributeDefiniti
 	}
 }
 
-func (h *ElasticSearchServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *ElasticSearchServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 	oe, ne := d.GetChange(h.GetKey())
 
@@ -150,7 +151,7 @@ func (h *ElasticSearchServiceAttributeHandler) Process(d *schema.ResourceData, l
 	return nil
 }
 
-func (h *ElasticSearchServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *ElasticSearchServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// Refresh Elasticsearch.
 	log.Printf("[DEBUG] Refreshing Elasticsearch logging endpoints for (%s)", d.Id())
 	elasticsearchList, err := conn.ListElasticsearch(&gofastly.ListElasticsearchInput{

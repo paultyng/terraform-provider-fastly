@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -94,7 +95,7 @@ func (h *GooglePubSubServiceAttributeHandler) Register(s *schema.Resource) error
 	return nil
 }
 
-func (h *GooglePubSubServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *GooglePubSubServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 	oldLogCfg, newLogCfg := d.GetChange(h.GetKey())
 
@@ -202,7 +203,7 @@ func (h *GooglePubSubServiceAttributeHandler) Process(d *schema.ResourceData, la
 	return nil
 }
 
-func (h *GooglePubSubServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *GooglePubSubServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// Refresh Google Cloud Pub/Sub logging endpoints.
 	log.Printf("[DEBUG] Refreshing Google Cloud Pub/Sub logging endpoints for (%s)", d.Id())
 	googlepubsubList, err := conn.ListPubsubs(&gofastly.ListPubsubsInput{

@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -22,7 +23,7 @@ func NewServiceDirector(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *DirectorServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *DirectorServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	od, nd := d.GetChange(h.GetKey())
 	if od == nil {
 		od = new(schema.Set)
@@ -204,7 +205,7 @@ func (h *DirectorServiceAttributeHandler) Process(d *schema.ResourceData, latest
 	return nil
 }
 
-func (h *DirectorServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *DirectorServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	log.Printf("[DEBUG] Refreshing Directors for (%s)", d.Id())
 	directorList, err := conn.ListDirectors(&gofastly.ListDirectorsInput{
 		ServiceID:      d.Id(),

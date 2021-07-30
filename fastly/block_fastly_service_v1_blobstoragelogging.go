@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceBlobStorageLogging(sa ServiceMetadata) ServiceAttributeDefinition
 	}
 }
 
-func (h *BlobStorageLoggingServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *BlobStorageLoggingServiceAttributeHandler) Process(_ context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	obsl, nbsl := d.GetChange(h.GetKey())
 	if obsl == nil {
 		obsl = new(schema.Set)
@@ -176,7 +177,7 @@ func (h *BlobStorageLoggingServiceAttributeHandler) Process(d *schema.ResourceDa
 	return nil
 }
 
-func (h *BlobStorageLoggingServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *BlobStorageLoggingServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	log.Printf("[DEBUG] Refreshing Blob Storages for (%s)", d.Id())
 	blobStorageList, err := conn.ListBlobStorages(&gofastly.ListBlobStoragesInput{
 		ServiceID:      d.Id(),

@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -22,7 +23,7 @@ func NewServiceRequestSetting(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *RequestSettingServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *RequestSettingServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	os, ns := d.GetChange(h.GetKey())
 	if os == nil {
 		os = new(schema.Set)
@@ -161,7 +162,7 @@ func (h *RequestSettingServiceAttributeHandler) Process(d *schema.ResourceData, 
 	return nil
 }
 
-func (h *RequestSettingServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *RequestSettingServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	log.Printf("[DEBUG] Refreshing Request Settings for (%s)", d.Id())
 	rsList, err := conn.ListRequestSettings(&gofastly.ListRequestSettingsInput{
 		ServiceID:      d.Id(),

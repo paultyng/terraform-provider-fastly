@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -21,7 +22,7 @@ func NewServiceLoggingNewRelic(sa ServiceMetadata) ServiceAttributeDefinition {
 	}
 }
 
-func (h *NewRelicServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *NewRelicServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	serviceID := d.Id()
 	od, nd := d.GetChange(h.GetKey())
 
@@ -120,7 +121,7 @@ func (h *NewRelicServiceAttributeHandler) Process(d *schema.ResourceData, latest
 	return nil
 }
 
-func (h *NewRelicServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *NewRelicServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	// Refresh NewRelic.
 	log.Printf("[DEBUG] Refreshing New Relic logging endpoints for (%s)", d.Id())
 	newrelicList, err := conn.ListNewRelic(&gofastly.ListNewRelicInput{
