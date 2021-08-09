@@ -56,8 +56,12 @@ func generateNewCRUDFunctions(attributeHandlerName string, processFunc *dst.Func
 
 // Makes requisite tweaks to the body of the For loop to adapt it to being a function body
 func tweakFuncBody(body *dst.BlockStmt) *dst.BlockStmt {
+	forBody := body.List
+
 	// Remove the first line (usually an unneeded type cast of the `resource` variable)
-	forBody := body.List[1:]
+	if isAssignmentToVarCalled(body.List[0], "resource") {
+		forBody = forBody[1:]
+	}
 
 	// Ensure there is no random blank line at the start of the body
 	forBody[0].Decorations().Before = dst.NewLine
@@ -68,25 +72,35 @@ func tweakFuncBody(body *dst.BlockStmt) *dst.BlockStmt {
 	// Delete any statements declaring a variable called `modified`
 	var funcBody = &dst.BlockStmt{}
 	for _, stmt := range forBody {
-		assignment, ok := stmt.(*dst.AssignStmt)
-		if ok {
-			identifier, ok := assignment.Lhs[0].(*dst.Ident)
-			if ok {
-				if identifier.String() == "modified" {
-					continue
-				}
-			}
+		if isAssignmentToVarCalled(stmt, "modified") {
+			continue
 		}
 		funcBody.List = append(funcBody.List, stmt)
 	}
 
-	// Rename any references to `latestVersion` to `serviceVersion`
 	dstutil.Apply(funcBody, func(cursor *dstutil.Cursor) bool {
 		node := cursor.Node()
+
+		// Rename any references to `latestVersion` to `serviceVersion`
+		// Rename any references to `serviceID` to `d.Id()`
 		identifier, ok := node.(*dst.Ident)
 		if ok {
-			if identifier.String() == "latestVersion" {
+			switch identifier.String() {
+			case "latestVersion":
 				cursor.Replace(dst.NewIdent("serviceVersion"))
+			case "serviceID":
+				cursor.Replace(dst.NewIdent("d.Id()"))
+			}
+		}
+
+		// Stop type asserting the resource variable (will already be map[string]interface{}, not interface{})
+		typeAssertExpr, ok := node.(*dst.TypeAssertExpr)
+		if ok {
+			assertedVarName, ok := typeAssertExpr.X.(*dst.Ident)
+			if ok {
+				if assertedVarName.String() == "resource" {
+					cursor.Replace(dst.NewIdent("resource"))
+				}
 			}
 		}
 		return true
@@ -275,4 +289,17 @@ func getReturnNilStmt() dst.Stmt {
 			dst.NewIdent("nil"),
 		},
 	}
+}
+
+func isAssignmentToVarCalled(stmt dst.Stmt, varName string) bool {
+	assignment, ok := stmt.(*dst.AssignStmt)
+	if ok {
+		identifier, ok := assignment.Lhs[0].(*dst.Ident)
+		if ok {
+			if identifier.String() == varName {
+				return true
+			}
+		}
+	}
+	return false
 }

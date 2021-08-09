@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"go/parser"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
+	"github.com/dave/dst/dstutil"
 )
 
 const filepathBase = "/Users/bengesoff/code/clients/fastly/terraform-provider-fastly/"
@@ -56,12 +58,24 @@ func main() {
 		"fastly/block_fastly_service_v1_vcl.go",
 	}
 	for _, name := range fileNames {
-		newFile, err := transformFile(filepathBase + name)
+		path := filepathBase + name
+		newFileContents, err := transformFile(path)
 		if err != nil {
 			panic(err)
 		}
 
-		fmt.Println(newFile)
+		log.Println("Opening file for writing new contents", path)
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0644)
+		if err != nil {
+			panic(err)
+		}
+
+		log.Println("Writing contents to file")
+		_, err = file.WriteString(newFileContents)
+		if err != nil {
+			panic(err)
+		}
+		log.Println("Finished processing", path)
 	}
 }
 
@@ -91,9 +105,9 @@ func transformFile(filename string) (string, error) {
 		return "", fmt.Errorf("no Read function found in %s", filename)
 	}
 
-	newFunc := findFunc(file, "New")
+	newFunc := findFunc(file, "NewService")
 	if newFunc == nil {
-		return "", fmt.Errorf("no New* function found in %s", filename)
+		return "", fmt.Errorf("no NewService* function found in %s", filename)
 	}
 
 	// Extract the method receiver to get the name of the struct for the AttributeDefinition
@@ -108,25 +122,55 @@ func transformFile(filename string) (string, error) {
 		return "", err
 	}
 
-	log.Println("Generated Create, Update, and Delete functions. Adding them to the file")
-	file.Decls = append(file.Decls, crudFunctions["Create"], crudFunctions["Update"], crudFunctions["Delete"])
+	log.Println("Generated Create, Update, and Delete functions")
 
-	log.Println("Adding Key function")
-	file.Decls = append(file.Decls, getKeyFunc(attributeHandlerName))
+	keyFunc := getKeyFunc(attributeHandlerName)
+	log.Println("Generated Key function")
 
 	getSchemaFunc, err := generateGetSchemaFunc(attributeHandlerName, registerFunc)
 	if err != nil {
 		return "", err
 	}
-
-	log.Println("Generated GetSchema function. Adding it to the file")
-	file.Decls = append(file.Decls, getSchemaFunc)
+	log.Println("Generated GetSchema function")
 
 	modifyReadFunc(readFunc)
 	log.Println("Modified Read function")
 
 	modifyNewFunc(newFunc)
 	log.Println("Modified New* function")
+
+	// Delete the Process and Read functions, and insert the new functions
+	dstutil.Apply(file, func(cursor *dstutil.Cursor) bool {
+		node := cursor.Node()
+
+		funcDecl, ok := node.(*dst.FuncDecl)
+		if ok {
+			name := funcDecl.Name.String()
+
+			if name == "Process" || name == "Register" {
+				cursor.Delete()
+			}
+
+			if name == newFunc.Name.String() {
+				// Insert in reverse order
+				cursor.InsertAfter(crudFunctions["Create"])
+				cursor.InsertAfter(getSchemaFunc)
+				cursor.InsertAfter(keyFunc)
+			}
+
+			if name == "Read" {
+				// Insert in reverse order
+				cursor.InsertAfter(crudFunctions["Delete"])
+				cursor.InsertAfter(crudFunctions["Update"])
+			}
+
+			return false
+		}
+
+		return true
+	}, nil)
+
+	log.Println("Added functions to file and removed old ones")
 
 	var buf bytes.Buffer
 	restorer := decorator.NewRestorer()
