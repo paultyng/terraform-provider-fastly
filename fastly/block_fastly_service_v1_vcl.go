@@ -15,130 +15,18 @@ type VCLServiceAttributeHandler struct {
 }
 
 func NewServiceVCL(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &VCLServiceAttributeHandler{
+	return BlockSetToServiceAttributeDefinition(&VCLServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "vcl",
 			serviceMetadata: sa,
 		},
-	}
-}
-
-func (h *VCLServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	// Note: as above with Gzip and S3 logging, we don't utilize the PUT
-	// endpoint to update a VCL, we simply destroy it and create a new one.
-	oldVCLVal, newVCLVal := d.GetChange(h.GetKey())
-	if oldVCLVal == nil {
-		oldVCLVal = new(schema.Set)
-	}
-	if newVCLVal == nil {
-		newVCLVal = new(schema.Set)
-	}
-
-	oldSet := oldVCLVal.(*schema.Set)
-	newSet := newVCLVal.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
-		}
-		return t["name"], nil
 	})
-
-	diffResult, err := setDiff.Diff(oldSet, newSet)
-	if err != nil {
-		return err
-	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-		opts := gofastly.DeleteVCLInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		log.Printf("[DEBUG] Fastly VCL Removal opts: %#v", opts)
-		err := conn.DeleteVCL(&opts)
-		if errRes, ok := err.(*gofastly.HTTPError); ok {
-			if errRes.StatusCode != 404 {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		resource := resource.(map[string]interface{})
-		opts := gofastly.CreateVCLInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-			Content:        resource["content"].(string),
-			Main:           resource["main"].(bool),
-		}
-
-		log.Printf("[DEBUG] Fastly VCL Addition opts: %#v", opts)
-		_, err := conn.CreateVCL(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources
-	//
-	// NOTE: although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	for _, resource := range diffResult.Modified {
-		resource := resource.(map[string]interface{})
-
-		opts := gofastly.UpdateVCLInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		// only attempt to update attributes that have changed
-		modified := setDiff.Filter(resource, oldSet)
-
-		if v, ok := modified["content"]; ok {
-			opts.Content = gofastly.String(v.(string))
-		}
-
-		log.Printf("[DEBUG] Update VCL Opts: %#v", opts)
-		_, err := conn.UpdateVCL(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-func (h *VCLServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
-	log.Printf("[DEBUG] Refreshing VCLs for (%s)", d.Id())
-	vclList, err := conn.ListVCLs(&gofastly.ListVCLsInput{
-		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
-	})
-	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up VCLs for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
-	}
+func (h *VCLServiceAttributeHandler) Key() string { return h.key }
 
-	vl := flattenVCLs(vclList)
-
-	if err := d.Set(h.GetKey(), vl); err != nil {
-		log.Printf("[WARN] Error setting VCLs for (%s): %s", d.Id(), err)
-	}
-	return nil
-}
-
-func (h *VCLServiceAttributeHandler) Register(s *schema.Resource) error {
-	s.Schema[h.GetKey()] = &schema.Schema{
+func (h *VCLServiceAttributeHandler) GetSchema() *schema.Schema {
+	return &schema.Schema{
 		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
@@ -161,6 +49,81 @@ func (h *VCLServiceAttributeHandler) Register(s *schema.Resource) error {
 				},
 			},
 		},
+	}
+}
+
+func (h *VCLServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.CreateVCLInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+		Content:        resource["content"].(string),
+		Main:           resource["main"].(bool),
+	}
+
+	log.Printf("[DEBUG] Fastly VCL Addition opts: %#v", opts)
+	_, err := conn.CreateVCL(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *VCLServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, serviceVersion int, conn *gofastly.Client) error {
+	log.Printf("[DEBUG] Refreshing VCLs for (%s)", d.Id())
+	vclList, err := conn.ListVCLs(&gofastly.ListVCLsInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+	})
+	if err != nil {
+		return fmt.Errorf("[ERR] Error looking up VCLs for (%s), version (%v): %s", d.Id(), serviceVersion, err)
+	}
+
+	vl := flattenVCLs(vclList)
+
+	if err := d.Set(h.GetKey(), vl); err != nil {
+		log.Printf("[WARN] Error setting VCLs for (%s): %s", d.Id(), err)
+	}
+	return nil
+}
+
+func (h *VCLServiceAttributeHandler) Update(_ context.Context, d *schema.ResourceData, resource, modified map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.UpdateVCLInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	if v, ok := modified["content"]; ok {
+		opts.Content = gofastly.String(v.(string))
+	}
+
+	log.Printf("[DEBUG] Update VCL Opts: %#v", opts)
+	_, err := conn.UpdateVCL(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *VCLServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.DeleteVCLInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	log.Printf("[DEBUG] Fastly VCL Removal opts: %#v", opts)
+	err := conn.DeleteVCL(&opts)
+	if errRes, ok := err.(*gofastly.HTTPError); ok {
+		if errRes.StatusCode != 404 {
+			return err
+		}
+	} else if err != nil {
+		return err
 	}
 	return nil
 }

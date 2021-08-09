@@ -15,168 +15,98 @@ type GzipServiceAttributeHandler struct {
 }
 
 func NewServiceGzip(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &GzipServiceAttributeHandler{
+	return BlockSetToServiceAttributeDefinition(&GzipServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "gzip",
 			serviceMetadata: sa,
 		},
+	})
+}
+
+func (h *GzipServiceAttributeHandler) Key() string { return h.key }
+
+func (h *GzipServiceAttributeHandler) GetSchema() *schema.Schema {
+	return &schema.Schema{
+		Type:     schema.TypeSet,
+		Optional: true,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				// required fields
+				"name": {
+					Type:        schema.TypeString,
+					Required:    true,
+					Description: "A name to refer to this gzip condition. It is important to note that changing this attribute will delete and recreate the resource",
+				},
+				// optional fields
+				"content_types": {
+					Type:        schema.TypeSet,
+					Optional:    true,
+					Description: "The content-type for each type of content you wish to have dynamically gzip'ed. Example: `[\"text/html\", \"text/css\"]`",
+					Elem:        &schema.Schema{Type: schema.TypeString},
+				},
+				"extensions": {
+					Type:        schema.TypeSet,
+					Optional:    true,
+					Description: "File extensions for each file type to dynamically gzip. Example: `[\"css\", \"js\"]`",
+					Elem:        &schema.Schema{Type: schema.TypeString},
+				},
+				"cache_condition": {
+					Type:        schema.TypeString,
+					Optional:    true,
+					Default:     "",
+					Description: "Name of already defined `condition` controlling when this gzip configuration applies. This `condition` must be of type `CACHE`. For detailed information about Conditionals, see [Fastly's Documentation on Conditionals](https://docs.fastly.com/en/guides/using-conditions)",
+				},
+			},
+		},
 	}
 }
 
-func (h *GzipServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	og, ng := d.GetChange(h.GetKey())
-	if og == nil {
-		og = new(schema.Set)
-	}
-	if ng == nil {
-		ng = new(schema.Set)
+func (h *GzipServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.CreateGzipInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+		CacheCondition: resource["cache_condition"].(string),
 	}
 
-	oldSet := og.(*schema.Set)
-	newSet := ng.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
+	if v, ok := resource["content_types"]; ok {
+		if len(v.(*schema.Set).List()) > 0 {
+			var cl []string
+			for _, c := range v.(*schema.Set).List() {
+				cl = append(cl, c.(string))
+			}
+			opts.ContentTypes = strings.Join(cl, " ")
 		}
-		return t["name"], nil
-	})
+	}
 
-	diffResult, err := setDiff.Diff(oldSet, newSet)
+	if v, ok := resource["extensions"]; ok {
+		if len(v.(*schema.Set).List()) > 0 {
+			var el []string
+			for _, e := range v.(*schema.Set).List() {
+				el = append(el, e.(string))
+			}
+			opts.Extensions = strings.Join(el, " ")
+		}
+	}
+
+	log.Printf("[DEBUG] Fastly Gzip Addition opts: %#v", opts)
+	_, err := conn.CreateGzip(&opts)
 	if err != nil {
 		return err
 	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-		opts := gofastly.DeleteGzipInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		log.Printf("[DEBUG] Fastly Gzip removal opts: %#v", opts)
-		err := conn.DeleteGzip(&opts)
-		if errRes, ok := err.(*gofastly.HTTPError); ok {
-			if errRes.StatusCode != 404 {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		resource := resource.(map[string]interface{})
-		opts := gofastly.CreateGzipInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-			CacheCondition: resource["cache_condition"].(string),
-		}
-
-		if v, ok := resource["content_types"]; ok {
-			if len(v.(*schema.Set).List()) > 0 {
-				var cl []string
-				for _, c := range v.(*schema.Set).List() {
-					cl = append(cl, c.(string))
-				}
-				opts.ContentTypes = strings.Join(cl, " ")
-			}
-		}
-
-		if v, ok := resource["extensions"]; ok {
-			if len(v.(*schema.Set).List()) > 0 {
-				var el []string
-				for _, e := range v.(*schema.Set).List() {
-					el = append(el, e.(string))
-				}
-				opts.Extensions = strings.Join(el, " ")
-			}
-		}
-
-		log.Printf("[DEBUG] Fastly Gzip Addition opts: %#v", opts)
-		_, err := conn.CreateGzip(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources
-	//
-	// NOTE: although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	for _, resource := range diffResult.Modified {
-		resource := resource.(map[string]interface{})
-
-		opts := gofastly.UpdateGzipInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		// only attempt to update attributes that have changed
-		modified := setDiff.Filter(resource, oldSet)
-
-		// NOTE: where we transition between interface{} we lose the ability to
-		// infer the underlying type being either a uint vs an int. This
-		// materializes as a panic (yay) and so it's only at runtime we discover
-		// this and so we've updated the below code to convert the type asserted
-		// int into a uint before passing the value to gofastly.Uint().
-		if v, ok := modified["content_types"]; ok {
-			// NOTE: this particular line was added to address a change in the backend API
-			// where it used to accept an empty value but now will use a default value if no value provided.
-			// To allow "resetting" the value on modify (user removed the attribute or set empty value)
-			// we always default to sending an empty string
-			opts.ContentTypes = gofastly.String("")
-
-			set := v.(*schema.Set)
-			if len(set.List()) > 0 {
-				var s []string
-				for _, elem := range set.List() {
-					s = append(s, elem.(string))
-				}
-				opts.ContentTypes = gofastly.String(strings.Join(s, " "))
-			}
-		}
-		if v, ok := modified["extensions"]; ok {
-			opts.Extensions = gofastly.String("")
-			set := v.(*schema.Set)
-			if len(set.List()) > 0 {
-				var s []string
-				for _, elem := range set.List() {
-					s = append(s, elem.(string))
-				}
-				opts.Extensions = gofastly.String(strings.Join(s, " "))
-			}
-		}
-		if v, ok := modified["cache_condition"]; ok {
-			opts.CacheCondition = gofastly.String(v.(string))
-		}
-
-		log.Printf("[DEBUG] Update Gzip Opts: %#v", opts)
-		_, err := conn.UpdateGzip(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
-func (h *GzipServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *GzipServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, serviceVersion int, conn *gofastly.Client) error {
 	log.Printf("[DEBUG] Refreshing Gzips for (%s)", d.Id())
 	gzipsList, err := conn.ListGzips(&gofastly.ListGzipsInput{
 		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
+		ServiceVersion: serviceVersion,
 	})
 
 	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up Gzips for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
+		return fmt.Errorf("[ERR] Error looking up Gzips for (%s), version (%v): %s", d.Id(), serviceVersion, err)
 	}
 
 	gl := flattenGzips(gzipsList)
@@ -218,39 +148,74 @@ func (h *GzipServiceAttributeHandler) Read(ctx context.Context, d *schema.Resour
 	return nil
 }
 
-func (h *GzipServiceAttributeHandler) Register(s *schema.Resource) error {
-	s.Schema[h.GetKey()] = &schema.Schema{
-		Type:     schema.TypeSet,
-		Optional: true,
-		Elem: &schema.Resource{
-			Schema: map[string]*schema.Schema{
-				// required fields
-				"name": {
-					Type:        schema.TypeString,
-					Required:    true,
-					Description: "A name to refer to this gzip condition. It is important to note that changing this attribute will delete and recreate the resource",
-				},
-				// optional fields
-				"content_types": {
-					Type:        schema.TypeSet,
-					Optional:    true,
-					Description: "The content-type for each type of content you wish to have dynamically gzip'ed. Example: `[\"text/html\", \"text/css\"]`",
-					Elem:        &schema.Schema{Type: schema.TypeString},
-				},
-				"extensions": {
-					Type:        schema.TypeSet,
-					Optional:    true,
-					Description: "File extensions for each file type to dynamically gzip. Example: `[\"css\", \"js\"]`",
-					Elem:        &schema.Schema{Type: schema.TypeString},
-				},
-				"cache_condition": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Default:     "",
-					Description: "Name of already defined `condition` controlling when this gzip configuration applies. This `condition` must be of type `CACHE`. For detailed information about Conditionals, see [Fastly's Documentation on Conditionals](https://docs.fastly.com/en/guides/using-conditions)",
-				},
-			},
-		},
+func (h *GzipServiceAttributeHandler) Update(_ context.Context, d *schema.ResourceData, resource, modified map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.UpdateGzipInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	// NOTE: where we transition between interface{} we lose the ability to
+	// infer the underlying type being either a uint vs an int. This
+	// materializes as a panic (yay) and so it's only at runtime we discover
+	// this and so we've updated the below code to convert the type asserted
+	// int into a uint before passing the value to gofastly.Uint().
+	if v, ok := modified["content_types"]; ok {
+		// NOTE: this particular line was added to address a change in the backend API
+		// where it used to accept an empty value but now will use a default value if no value provided.
+		// To allow "resetting" the value on modify (user removed the attribute or set empty value)
+		// we always default to sending an empty string
+		opts.ContentTypes = gofastly.String("")
+
+		set := v.(*schema.Set)
+		if len(set.List()) > 0 {
+			var s []string
+			for _, elem := range set.List() {
+				s = append(s, elem.(string))
+			}
+			opts.ContentTypes = gofastly.String(strings.Join(s, " "))
+		}
+	}
+	if v, ok := modified["extensions"]; ok {
+		opts.Extensions = gofastly.String("")
+		set := v.(*schema.Set)
+		if len(set.List()) > 0 {
+			var s []string
+			for _, elem := range set.List() {
+				s = append(s, elem.(string))
+			}
+			opts.Extensions = gofastly.String(strings.Join(s, " "))
+		}
+	}
+	if v, ok := modified["cache_condition"]; ok {
+		opts.CacheCondition = gofastly.String(v.(string))
+	}
+
+	log.Printf("[DEBUG] Update Gzip Opts: %#v", opts)
+	_, err := conn.UpdateGzip(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *GzipServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.DeleteGzipInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	log.Printf("[DEBUG] Fastly Gzip removal opts: %#v", opts)
+	err := conn.DeleteGzip(&opts)
+	if errRes, ok := err.(*gofastly.HTTPError); ok {
+		if errRes.StatusCode != 404 {
+			return err
+		}
+	} else if err != nil {
+		return err
 	}
 	return nil
 }

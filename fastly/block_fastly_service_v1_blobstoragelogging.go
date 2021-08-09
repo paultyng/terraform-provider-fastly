@@ -14,193 +14,17 @@ type BlobStorageLoggingServiceAttributeHandler struct {
 }
 
 func NewServiceBlobStorageLogging(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &BlobStorageLoggingServiceAttributeHandler{
+	return BlockSetToServiceAttributeDefinition(&BlobStorageLoggingServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "blobstoragelogging",
 			serviceMetadata: sa,
 		},
-	}
-}
-
-func (h *BlobStorageLoggingServiceAttributeHandler) Process(_ context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	obsl, nbsl := d.GetChange(h.GetKey())
-	if obsl == nil {
-		obsl = new(schema.Set)
-	}
-	if nbsl == nil {
-		nbsl = new(schema.Set)
-	}
-
-	oldSet := obsl.(*schema.Set)
-	newSet := nbsl.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
-		}
-		return t["name"], nil
 	})
-
-	diffResult, err := setDiff.Diff(oldSet, newSet)
-	if err != nil {
-		return err
-	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-		opts := gofastly.DeleteBlobStorageInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		log.Printf("[DEBUG] Blob Storage logging removal opts: %#v", opts)
-		err := conn.DeleteBlobStorage(&opts)
-		if errRes, ok := err.(*gofastly.HTTPError); ok {
-			if errRes.StatusCode != 404 {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		resource := resource.(map[string]interface{})
-		var vla = h.getVCLLoggingAttributes(resource)
-		opts := gofastly.CreateBlobStorageInput{
-			ServiceID:         d.Id(),
-			ServiceVersion:    latestVersion,
-			Name:              resource["name"].(string),
-			Path:              resource["path"].(string),
-			AccountName:       resource["account_name"].(string),
-			Container:         resource["container"].(string),
-			SASToken:          resource["sas_token"].(string),
-			Period:            uint(resource["period"].(int)),
-			TimestampFormat:   resource["timestamp_format"].(string),
-			GzipLevel:         uint(resource["gzip_level"].(int)),
-			PublicKey:         resource["public_key"].(string),
-			MessageType:       resource["message_type"].(string),
-			Format:            vla.format,
-			FormatVersion:     uintOrDefault(vla.formatVersion),
-			Placement:         vla.placement,
-			ResponseCondition: vla.responseCondition,
-			FileMaxBytes:      uint(resource["file_max_bytes"].(int)),
-			CompressionCodec:  resource["compression_codec"].(string),
-		}
-
-		log.Printf("[DEBUG] Blob Storage logging create opts: %#v", opts)
-		_, err := conn.CreateBlobStorage(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources
-	//
-	// NOTE: although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	for _, resource := range diffResult.Modified {
-		resource := resource.(map[string]interface{})
-
-		opts := gofastly.UpdateBlobStorageInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		// only attempt to update attributes that have changed
-		modified := setDiff.Filter(resource, oldSet)
-
-		// NOTE: where we transition between interface{} we lose the ability to
-		// infer the underlying type being either a uint vs an int. This
-		// materializes as a panic (yay) and so it's only at runtime we discover
-		// this and so we've updated the below code to convert the type asserted
-		// int into a uint before passing the value to gofastly.Uint().
-		if v, ok := modified["path"]; ok {
-			opts.Path = gofastly.String(v.(string))
-		}
-		if v, ok := modified["account_name"]; ok {
-			opts.AccountName = gofastly.String(v.(string))
-		}
-		if v, ok := modified["container"]; ok {
-			opts.Container = gofastly.String(v.(string))
-		}
-		if v, ok := modified["sas_token"]; ok {
-			opts.SASToken = gofastly.String(v.(string))
-		}
-		if v, ok := modified["period"]; ok {
-			opts.Period = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["timestamp_format"]; ok {
-			opts.TimestampFormat = gofastly.String(v.(string))
-		}
-		if v, ok := modified["compression_codec"]; ok {
-			opts.CompressionCodec = gofastly.String(v.(string))
-		}
-		if v, ok := modified["gzip_level"]; ok {
-			opts.GzipLevel = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["public_key"]; ok {
-			opts.PublicKey = gofastly.String(v.(string))
-		}
-		if v, ok := modified["format"]; ok {
-			opts.Format = gofastly.String(v.(string))
-		}
-		if v, ok := modified["format_version"]; ok {
-			opts.FormatVersion = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["message_type"]; ok {
-			opts.MessageType = gofastly.String(v.(string))
-		}
-		if v, ok := modified["placement"]; ok {
-			opts.Placement = gofastly.String(v.(string))
-		}
-		if v, ok := modified["response_condition"]; ok {
-			opts.ResponseCondition = gofastly.String(v.(string))
-		}
-		if v, ok := modified["file_max_bytes"]; ok {
-			opts.FileMaxBytes = gofastly.Uint(uint(v.(int)))
-		}
-
-		log.Printf("[DEBUG] Update Blob Storage Opts: %#v", opts)
-		_, err := conn.UpdateBlobStorage(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-func (h *BlobStorageLoggingServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
-	log.Printf("[DEBUG] Refreshing Blob Storages for (%s)", d.Id())
-	blobStorageList, err := conn.ListBlobStorages(&gofastly.ListBlobStoragesInput{
-		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
-	})
+func (h *BlobStorageLoggingServiceAttributeHandler) Key() string { return h.key }
 
-	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up Blob Storages for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
-	}
-
-	bsl := flattenBlobStorages(blobStorageList)
-
-	for _, element := range bsl {
-		element = h.pruneVCLLoggingAttributes(element)
-	}
-
-	if err := d.Set(h.GetKey(), bsl); err != nil {
-		log.Printf("[WARN] Error setting Blob Storages for (%s): %s", d.Id(), err)
-	}
-	return nil
-}
-
-func (h *BlobStorageLoggingServiceAttributeHandler) Register(s *schema.Resource) error {
+func (h *BlobStorageLoggingServiceAttributeHandler) GetSchema() *schema.Schema {
 	var blockAttributes = map[string]*schema.Schema{
 		// Required fields
 		"name": {
@@ -302,14 +126,154 @@ func (h *BlobStorageLoggingServiceAttributeHandler) Register(s *schema.Resource)
 		}
 	}
 
-	s.Schema[h.GetKey()] = &schema.Schema{
+	return &schema.Schema{
 		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
 			Schema: blockAttributes,
 		},
 	}
+}
 
+func (h *BlobStorageLoggingServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	var vla = h.getVCLLoggingAttributes(resource)
+	opts := gofastly.CreateBlobStorageInput{
+		ServiceID:         d.Id(),
+		ServiceVersion:    serviceVersion,
+		Name:              resource["name"].(string),
+		Path:              resource["path"].(string),
+		AccountName:       resource["account_name"].(string),
+		Container:         resource["container"].(string),
+		SASToken:          resource["sas_token"].(string),
+		Period:            uint(resource["period"].(int)),
+		TimestampFormat:   resource["timestamp_format"].(string),
+		GzipLevel:         uint(resource["gzip_level"].(int)),
+		PublicKey:         resource["public_key"].(string),
+		MessageType:       resource["message_type"].(string),
+		Format:            vla.format,
+		FormatVersion:     uintOrDefault(vla.formatVersion),
+		Placement:         vla.placement,
+		ResponseCondition: vla.responseCondition,
+		FileMaxBytes:      uint(resource["file_max_bytes"].(int)),
+		CompressionCodec:  resource["compression_codec"].(string),
+	}
+
+	log.Printf("[DEBUG] Blob Storage logging create opts: %#v", opts)
+	_, err := conn.CreateBlobStorage(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *BlobStorageLoggingServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, serviceVersion int, conn *gofastly.Client) error {
+	log.Printf("[DEBUG] Refreshing Blob Storages for (%s)", d.Id())
+	blobStorageList, err := conn.ListBlobStorages(&gofastly.ListBlobStoragesInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+	})
+
+	if err != nil {
+		return fmt.Errorf("[ERR] Error looking up Blob Storages for (%s), version (%v): %s", d.Id(), serviceVersion, err)
+	}
+
+	bsl := flattenBlobStorages(blobStorageList)
+
+	for _, element := range bsl {
+		element = h.pruneVCLLoggingAttributes(element)
+	}
+
+	if err := d.Set(h.GetKey(), bsl); err != nil {
+		log.Printf("[WARN] Error setting Blob Storages for (%s): %s", d.Id(), err)
+	}
+	return nil
+}
+
+func (h *BlobStorageLoggingServiceAttributeHandler) Update(_ context.Context, d *schema.ResourceData, resource, modified map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.UpdateBlobStorageInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	// NOTE: where we transition between interface{} we lose the ability to
+	// infer the underlying type being either a uint vs an int. This
+	// materializes as a panic (yay) and so it's only at runtime we discover
+	// this and so we've updated the below code to convert the type asserted
+	// int into a uint before passing the value to gofastly.Uint().
+	if v, ok := modified["path"]; ok {
+		opts.Path = gofastly.String(v.(string))
+	}
+	if v, ok := modified["account_name"]; ok {
+		opts.AccountName = gofastly.String(v.(string))
+	}
+	if v, ok := modified["container"]; ok {
+		opts.Container = gofastly.String(v.(string))
+	}
+	if v, ok := modified["sas_token"]; ok {
+		opts.SASToken = gofastly.String(v.(string))
+	}
+	if v, ok := modified["period"]; ok {
+		opts.Period = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["timestamp_format"]; ok {
+		opts.TimestampFormat = gofastly.String(v.(string))
+	}
+	if v, ok := modified["compression_codec"]; ok {
+		opts.CompressionCodec = gofastly.String(v.(string))
+	}
+	if v, ok := modified["gzip_level"]; ok {
+		opts.GzipLevel = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["public_key"]; ok {
+		opts.PublicKey = gofastly.String(v.(string))
+	}
+	if v, ok := modified["format"]; ok {
+		opts.Format = gofastly.String(v.(string))
+	}
+	if v, ok := modified["format_version"]; ok {
+		opts.FormatVersion = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["message_type"]; ok {
+		opts.MessageType = gofastly.String(v.(string))
+	}
+	if v, ok := modified["placement"]; ok {
+		opts.Placement = gofastly.String(v.(string))
+	}
+	if v, ok := modified["response_condition"]; ok {
+		opts.ResponseCondition = gofastly.String(v.(string))
+	}
+	if v, ok := modified["file_max_bytes"]; ok {
+		opts.FileMaxBytes = gofastly.Uint(uint(v.(int)))
+	}
+
+	log.Printf("[DEBUG] Update Blob Storage Opts: %#v", opts)
+	_, err := conn.UpdateBlobStorage(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *BlobStorageLoggingServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.DeleteBlobStorageInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	log.Printf("[DEBUG] Blob Storage logging removal opts: %#v", opts)
+	err := conn.DeleteBlobStorage(&opts)
+	if errRes, ok := err.(*gofastly.HTTPError); ok {
+		if errRes.StatusCode != 404 {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
 	return nil
 }
 

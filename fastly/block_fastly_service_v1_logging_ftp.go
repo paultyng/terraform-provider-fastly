@@ -14,168 +14,17 @@ type FTPServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingFTP(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &FTPServiceAttributeHandler{
+	return BlockSetToServiceAttributeDefinition(&FTPServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_ftp",
 			serviceMetadata: sa,
 		},
-	}
-}
-
-func (h *FTPServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	serviceID := d.Id()
-	of, nf := d.GetChange(h.GetKey())
-
-	if of == nil {
-		of = new(schema.Set)
-	}
-	if nf == nil {
-		nf = new(schema.Set)
-	}
-
-	oldSet := of.(*schema.Set)
-	newSet := nf.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
-		}
-		return t["name"], nil
 	})
-
-	diffResult, err := setDiff.Diff(oldSet, newSet)
-	if err != nil {
-		return err
-	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-		opts := h.buildDelete(resource, serviceID, latestVersion)
-
-		log.Printf("[DEBUG] Fastly FTP logging endpoint removal opts: %#v", opts)
-
-		if err := deleteFTP(conn, opts); err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		resource := resource.(map[string]interface{})
-		opts := h.buildCreate(resource, serviceID, latestVersion)
-
-		log.Printf("[DEBUG] Fastly FTP logging addition opts: %#v", opts)
-
-		if err := createFTP(conn, opts); err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources
-	//
-	// NOTE: although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	for _, resource := range diffResult.Modified {
-		resource := resource.(map[string]interface{})
-
-		opts := gofastly.UpdateFTPInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		// only attempt to update attributes that have changed
-		modified := setDiff.Filter(resource, oldSet)
-
-		// NOTE: where we transition between interface{} we lose the ability to
-		// infer the underlying type being either a uint vs an int. This
-		// materializes as a panic (yay) and so it's only at runtime we discover
-		// this and so we've updated the below code to convert the type asserted
-		// int into a uint before passing the value to gofastly.Uint().
-		if v, ok := modified["address"]; ok {
-			opts.Address = gofastly.String(v.(string))
-		}
-		if v, ok := modified["port"]; ok {
-			opts.Port = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["public_key"]; ok {
-			opts.PublicKey = gofastly.String(v.(string))
-		}
-		if v, ok := modified["user"]; ok {
-			opts.Username = gofastly.String(v.(string))
-		}
-		if v, ok := modified["password"]; ok {
-			opts.Password = gofastly.String(v.(string))
-		}
-		if v, ok := modified["path"]; ok {
-			opts.Path = gofastly.String(v.(string))
-		}
-		if v, ok := modified["period"]; ok {
-			opts.Period = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["format"]; ok {
-			opts.Format = gofastly.String(v.(string))
-		}
-		if v, ok := modified["format_version"]; ok {
-			opts.FormatVersion = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["response_condition"]; ok {
-			opts.ResponseCondition = gofastly.String(v.(string))
-		}
-		if v, ok := modified["placement"]; ok {
-			opts.Placement = gofastly.String(v.(string))
-		}
-		if v, ok := modified["gzip_level"]; ok {
-			opts.GzipLevel = gofastly.Uint8(uint8(v.(int)))
-		}
-		if v, ok := modified["compression_codec"]; ok {
-			opts.CompressionCodec = gofastly.String(v.(string))
-		}
-		if v, ok := modified["message_type"]; ok {
-			opts.MessageType = gofastly.String(v.(string))
-		}
-		if v, ok := modified["timestamp_format"]; ok {
-			opts.TimestampFormat = gofastly.String(v.(string))
-		}
-
-		log.Printf("[DEBUG] Update FTP Opts: %#v", opts)
-		_, err := conn.UpdateFTP(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-func (h *FTPServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
-	// Refresh FTP.
-	log.Printf("[DEBUG] Refreshing FTP logging endpoints for (%s)", d.Id())
-	ftpList, err := conn.ListFTPs(&gofastly.ListFTPsInput{
-		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
-	})
+func (h *FTPServiceAttributeHandler) Key() string { return h.key }
 
-	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up FTP logging endpoints for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
-	}
-
-	ell := flattenFTP(ftpList)
-
-	for _, element := range ell {
-		element = h.pruneVCLLoggingAttributes(element)
-	}
-
-	if err := d.Set(h.GetKey(), ell); err != nil {
-		log.Printf("[WARN] Error setting FTP logging endpoints for (%s): %s", d.Id(), err)
-	}
-	return nil
-}
-
-func (h *FTPServiceAttributeHandler) Register(s *schema.Resource) error {
+func (h *FTPServiceAttributeHandler) GetSchema() *schema.Schema {
 	var blockAttributes = map[string]*schema.Schema{
 		// Required fields
 		"name": {
@@ -286,12 +135,126 @@ func (h *FTPServiceAttributeHandler) Register(s *schema.Resource) error {
 		}
 	}
 
-	s.Schema[h.GetKey()] = &schema.Schema{
+	return &schema.Schema{
 		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
 			Schema: blockAttributes,
 		},
+	}
+}
+
+func (h *FTPServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := h.buildCreate(resource, d.Id(), serviceVersion)
+
+	log.Printf("[DEBUG] Fastly FTP logging addition opts: %#v", opts)
+
+	if err := createFTP(conn, opts); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *FTPServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, serviceVersion int, conn *gofastly.Client) error {
+	// Refresh FTP.
+	log.Printf("[DEBUG] Refreshing FTP logging endpoints for (%s)", d.Id())
+	ftpList, err := conn.ListFTPs(&gofastly.ListFTPsInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+	})
+
+	if err != nil {
+		return fmt.Errorf("[ERR] Error looking up FTP logging endpoints for (%s), version (%v): %s", d.Id(), serviceVersion, err)
+	}
+
+	ell := flattenFTP(ftpList)
+
+	for _, element := range ell {
+		element = h.pruneVCLLoggingAttributes(element)
+	}
+
+	if err := d.Set(h.GetKey(), ell); err != nil {
+		log.Printf("[WARN] Error setting FTP logging endpoints for (%s): %s", d.Id(), err)
+	}
+	return nil
+}
+
+func (h *FTPServiceAttributeHandler) Update(_ context.Context, d *schema.ResourceData, resource, modified map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.UpdateFTPInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	// NOTE: where we transition between interface{} we lose the ability to
+	// infer the underlying type being either a uint vs an int. This
+	// materializes as a panic (yay) and so it's only at runtime we discover
+	// this and so we've updated the below code to convert the type asserted
+	// int into a uint before passing the value to gofastly.Uint().
+	if v, ok := modified["address"]; ok {
+		opts.Address = gofastly.String(v.(string))
+	}
+	if v, ok := modified["port"]; ok {
+		opts.Port = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["public_key"]; ok {
+		opts.PublicKey = gofastly.String(v.(string))
+	}
+	if v, ok := modified["user"]; ok {
+		opts.Username = gofastly.String(v.(string))
+	}
+	if v, ok := modified["password"]; ok {
+		opts.Password = gofastly.String(v.(string))
+	}
+	if v, ok := modified["path"]; ok {
+		opts.Path = gofastly.String(v.(string))
+	}
+	if v, ok := modified["period"]; ok {
+		opts.Period = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["format"]; ok {
+		opts.Format = gofastly.String(v.(string))
+	}
+	if v, ok := modified["format_version"]; ok {
+		opts.FormatVersion = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["response_condition"]; ok {
+		opts.ResponseCondition = gofastly.String(v.(string))
+	}
+	if v, ok := modified["placement"]; ok {
+		opts.Placement = gofastly.String(v.(string))
+	}
+	if v, ok := modified["gzip_level"]; ok {
+		opts.GzipLevel = gofastly.Uint8(uint8(v.(int)))
+	}
+	if v, ok := modified["compression_codec"]; ok {
+		opts.CompressionCodec = gofastly.String(v.(string))
+	}
+	if v, ok := modified["message_type"]; ok {
+		opts.MessageType = gofastly.String(v.(string))
+	}
+	if v, ok := modified["timestamp_format"]; ok {
+		opts.TimestampFormat = gofastly.String(v.(string))
+	}
+
+	log.Printf("[DEBUG] Update FTP Opts: %#v", opts)
+	_, err := conn.UpdateFTP(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *FTPServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := h.buildDelete(resource, d.Id(), serviceVersion)
+
+	log.Printf("[DEBUG] Fastly FTP logging endpoint removal opts: %#v", opts)
+
+	if err := deleteFTP(conn, opts); err != nil {
+		return err
 	}
 	return nil
 }

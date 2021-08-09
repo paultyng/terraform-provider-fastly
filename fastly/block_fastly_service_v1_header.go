@@ -15,164 +15,18 @@ type HeaderServiceAttributeHandler struct {
 }
 
 func NewServiceHeader(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &HeaderServiceAttributeHandler{
+	return BlockSetToServiceAttributeDefinition(&HeaderServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "header",
 			serviceMetadata: sa,
 		},
-	}
-}
-
-func (h *HeaderServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	oh, nh := d.GetChange(h.GetKey())
-	if oh == nil {
-		oh = new(schema.Set)
-	}
-	if nh == nil {
-		nh = new(schema.Set)
-	}
-
-	oldSet := oh.(*schema.Set)
-	newSet := nh.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
-		}
-		return t["name"], nil
 	})
-
-	diffResult, err := setDiff.Diff(oldSet, newSet)
-	if err != nil {
-		return err
-	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-		opts := gofastly.DeleteHeaderInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		log.Printf("[DEBUG] Fastly Header removal opts: %#v", opts)
-		err := conn.DeleteHeader(&opts)
-		if errRes, ok := err.(*gofastly.HTTPError); ok {
-			if errRes.StatusCode != 404 {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		opts, err := buildHeader(resource.(map[string]interface{}))
-		if err != nil {
-			log.Printf("[DEBUG] Error building Header: %s", err)
-			return err
-		}
-		opts.ServiceID = d.Id()
-		opts.ServiceVersion = latestVersion
-
-		log.Printf("[DEBUG] Fastly Header Addition opts: %#v", opts)
-		_, err = conn.CreateHeader(opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources
-	//
-	// NOTE: although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	for _, resource := range diffResult.Modified {
-		resource := resource.(map[string]interface{})
-
-		opts := gofastly.UpdateHeaderInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		// only attempt to update attributes that have changed
-		modified := setDiff.Filter(resource, oldSet)
-
-		// NOTE: where we transition between interface{} we lose the ability to
-		// infer the underlying type being either a uint vs an int. This
-		// materializes as a panic (yay) and so it's only at runtime we discover
-		// this and so we've updated the below code to convert the type asserted
-		// int into a uint before passing the value to gofastly.Uint().
-		if v, ok := modified["action"]; ok {
-			opts.Action = gofastly.PHeaderAction(gofastly.HeaderAction(v.(string)))
-		}
-		if v, ok := modified["ignore_if_set"]; ok {
-			opts.IgnoreIfSet = gofastly.CBool(v.(bool))
-		}
-		if v, ok := modified["type"]; ok {
-			opts.Type = gofastly.PHeaderType(gofastly.HeaderType(v.(string)))
-		}
-		if v, ok := modified["destination"]; ok {
-			opts.Destination = gofastly.String(v.(string))
-		}
-		if v, ok := modified["source"]; ok {
-			opts.Source = gofastly.String(v.(string))
-		}
-		if v, ok := modified["regex"]; ok {
-			opts.Regex = gofastly.String(v.(string))
-		}
-		if v, ok := modified["substitution"]; ok {
-			opts.Substitution = gofastly.String(v.(string))
-		}
-		if v, ok := modified["priority"]; ok {
-			opts.Priority = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["request_condition"]; ok {
-			opts.RequestCondition = gofastly.String(v.(string))
-		}
-		if v, ok := modified["cache_condition"]; ok {
-			opts.CacheCondition = gofastly.String(v.(string))
-		}
-		if v, ok := modified["response_condition"]; ok {
-			opts.ResponseCondition = gofastly.String(v.(string))
-		}
-
-		log.Printf("[DEBUG] Update Header Opts: %#v", opts)
-		_, err := conn.UpdateHeader(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-func (h *HeaderServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
-	log.Printf("[DEBUG] Refreshing Headers for (%s)", d.Id())
-	headerList, err := conn.ListHeaders(&gofastly.ListHeadersInput{
-		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
-	})
+func (h *HeaderServiceAttributeHandler) Key() string { return h.key }
 
-	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up Headers for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
-	}
-
-	hl := flattenHeaders(headerList)
-
-	if err := d.Set(h.GetKey(), hl); err != nil {
-		log.Printf("[WARN] Error setting Headers for (%s): %s", d.Id(), err)
-	}
-
-	return nil
-}
-
-func (h *HeaderServiceAttributeHandler) Register(s *schema.Resource) error {
-	s.Schema[h.GetKey()] = &schema.Schema{
+func (h *HeaderServiceAttributeHandler) GetSchema() *schema.Schema {
+	return &schema.Schema{
 		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
@@ -251,6 +105,118 @@ func (h *HeaderServiceAttributeHandler) Register(s *schema.Resource) error {
 				},
 			},
 		},
+	}
+}
+
+func (h *HeaderServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts, err := buildHeader(resource)
+	if err != nil {
+		log.Printf("[DEBUG] Error building Header: %s", err)
+		return err
+	}
+	opts.ServiceID = d.Id()
+	opts.ServiceVersion = serviceVersion
+
+	log.Printf("[DEBUG] Fastly Header Addition opts: %#v", opts)
+	_, err = conn.CreateHeader(opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *HeaderServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, serviceVersion int, conn *gofastly.Client) error {
+	log.Printf("[DEBUG] Refreshing Headers for (%s)", d.Id())
+	headerList, err := conn.ListHeaders(&gofastly.ListHeadersInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+	})
+
+	if err != nil {
+		return fmt.Errorf("[ERR] Error looking up Headers for (%s), version (%v): %s", d.Id(), serviceVersion, err)
+	}
+
+	hl := flattenHeaders(headerList)
+
+	if err := d.Set(h.GetKey(), hl); err != nil {
+		log.Printf("[WARN] Error setting Headers for (%s): %s", d.Id(), err)
+	}
+
+	return nil
+}
+
+func (h *HeaderServiceAttributeHandler) Update(_ context.Context, d *schema.ResourceData, resource, modified map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.UpdateHeaderInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	// NOTE: where we transition between interface{} we lose the ability to
+	// infer the underlying type being either a uint vs an int. This
+	// materializes as a panic (yay) and so it's only at runtime we discover
+	// this and so we've updated the below code to convert the type asserted
+	// int into a uint before passing the value to gofastly.Uint().
+	if v, ok := modified["action"]; ok {
+		opts.Action = gofastly.PHeaderAction(gofastly.HeaderAction(v.(string)))
+	}
+	if v, ok := modified["ignore_if_set"]; ok {
+		opts.IgnoreIfSet = gofastly.CBool(v.(bool))
+	}
+	if v, ok := modified["type"]; ok {
+		opts.Type = gofastly.PHeaderType(gofastly.HeaderType(v.(string)))
+	}
+	if v, ok := modified["destination"]; ok {
+		opts.Destination = gofastly.String(v.(string))
+	}
+	if v, ok := modified["source"]; ok {
+		opts.Source = gofastly.String(v.(string))
+	}
+	if v, ok := modified["regex"]; ok {
+		opts.Regex = gofastly.String(v.(string))
+	}
+	if v, ok := modified["substitution"]; ok {
+		opts.Substitution = gofastly.String(v.(string))
+	}
+	if v, ok := modified["priority"]; ok {
+		opts.Priority = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["request_condition"]; ok {
+		opts.RequestCondition = gofastly.String(v.(string))
+	}
+	if v, ok := modified["cache_condition"]; ok {
+		opts.CacheCondition = gofastly.String(v.(string))
+	}
+	if v, ok := modified["response_condition"]; ok {
+		opts.ResponseCondition = gofastly.String(v.(string))
+	}
+
+	log.Printf("[DEBUG] Update Header Opts: %#v", opts)
+	_, err := conn.UpdateHeader(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *HeaderServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.DeleteHeaderInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	log.Printf("[DEBUG] Fastly Header removal opts: %#v", opts)
+	err := conn.DeleteHeader(&opts)
+	if errRes, ok := err.(*gofastly.HTTPError); ok {
+		if errRes.StatusCode != 404 {
+			return err
+		}
+	} else if err != nil {
+		return err
 	}
 	return nil
 }

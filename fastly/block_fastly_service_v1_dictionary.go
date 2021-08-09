@@ -14,137 +14,18 @@ type DictionaryServiceAttributeHandler struct {
 }
 
 func NewServiceDictionary(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &DictionaryServiceAttributeHandler{
+	return BlockSetToServiceAttributeDefinition(&DictionaryServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "dictionary",
 			serviceMetadata: sa,
 		},
-	}
-}
-
-func (h *DictionaryServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	oldDictVal, newDictVal := d.GetChange(h.GetKey())
-
-	if oldDictVal == nil {
-		oldDictVal = new(schema.Set)
-	}
-	if newDictVal == nil {
-		newDictVal = new(schema.Set)
-	}
-
-	oldSet := oldDictVal.(*schema.Set)
-	newSet := newDictVal.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
-		}
-		return t["name"], nil
 	})
-
-	diffResult, err := setDiff.Diff(oldSet, newSet)
-	if err != nil {
-		return err
-	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-
-		if !resource["force_destroy"].(bool) {
-			mayDelete, err := isDictionaryEmpty(d.Id(), resource["dictionary_id"].(string), conn)
-			if err != nil {
-				return err
-			}
-
-			if !mayDelete {
-				return fmt.Errorf("Cannot delete dictionary (%s), it is not empty. Either delete the items first, or set force_destroy to true and apply it before making this change.", resource["dictionary_id"].(string))
-			}
-		}
-
-		opts := gofastly.DeleteDictionaryInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		log.Printf("[DEBUG] Fastly Dictionary Removal opts: %#v", opts)
-		err := conn.DeleteDictionary(&opts)
-		if errRes, ok := err.(*gofastly.HTTPError); ok {
-			if errRes.StatusCode != 404 {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		opts, err := buildDictionary(resource.(map[string]interface{}))
-		if err != nil {
-			log.Printf("[DEBUG] Error building Dicitionary: %s", err)
-			return err
-		}
-		opts.ServiceID = d.Id()
-		opts.ServiceVersion = latestVersion
-
-		log.Printf("[DEBUG] Fastly Dictionary Addition opts: %#v", opts)
-		_, err = conn.CreateDictionary(opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources (NOT IMPLEMENTED)
-	//
-	// Although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	//
-	// Additionally, the only other attribute available to a dictionary is the
-	// `write_only` attribute which cannot be modified. For more details see:
-	// https://docs.fastly.com/en/guides/private-dictionaries#limitations-and-considerations
-	//
-	// Because of this we do not implement any logic for updating the dictionary
-	// resource, only CREATE and DELETE functionality.
-
-	return nil
 }
 
-func (h *DictionaryServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
-	log.Printf("[DEBUG] Refreshing Dictionaries for (%s)", d.Id())
-	dictList, err := conn.ListDictionaries(&gofastly.ListDictionariesInput{
-		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
-	})
-	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up Dictionaries for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
-	}
+func (h *DictionaryServiceAttributeHandler) Key() string { return h.key }
 
-	dictionaries := flattenDictionaries(dictList)
-
-	// Match up force_destroy on each ACL from schema.ResourceData to avoid d.Set overwriting it with null
-	stateDicts := d.Get(h.GetKey()).(*schema.Set).List()
-	for _, dictionary := range dictionaries {
-		for _, sd := range stateDicts {
-			stateDict := sd.(map[string]interface{})
-			if dictionary["name"] == stateDict["name"] {
-				dictionary["force_destroy"] = stateDict["force_destroy"]
-				break
-			}
-		}
-	}
-
-	if err := d.Set(h.GetKey(), dictionaries); err != nil {
-		log.Printf("[WARN] Error setting Dictionary for (%s): %s", d.Id(), err)
-	}
-	return nil
-}
-
-func (h *DictionaryServiceAttributeHandler) Register(s *schema.Resource) error {
-	s.Schema[h.GetKey()] = &schema.Schema{
+func (h *DictionaryServiceAttributeHandler) GetSchema() *schema.Schema {
+	return &schema.Schema{
 		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
@@ -175,6 +56,89 @@ func (h *DictionaryServiceAttributeHandler) Register(s *schema.Resource) error {
 				},
 			},
 		},
+	}
+}
+
+func (h *DictionaryServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts, err := buildDictionary(resource)
+	if err != nil {
+		log.Printf("[DEBUG] Error building Dicitionary: %s", err)
+		return err
+	}
+	opts.ServiceID = d.Id()
+	opts.ServiceVersion = serviceVersion
+
+	log.Printf("[DEBUG] Fastly Dictionary Addition opts: %#v", opts)
+	_, err = conn.CreateDictionary(opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *DictionaryServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, serviceVersion int, conn *gofastly.Client) error {
+	log.Printf("[DEBUG] Refreshing Dictionaries for (%s)", d.Id())
+	dictList, err := conn.ListDictionaries(&gofastly.ListDictionariesInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+	})
+	if err != nil {
+		return fmt.Errorf("[ERR] Error looking up Dictionaries for (%s), version (%v): %s", d.Id(), serviceVersion, err)
+	}
+
+	dictionaries := flattenDictionaries(dictList)
+
+	// Match up force_destroy on each ACL from schema.ResourceData to avoid d.Set overwriting it with null
+	stateDicts := d.Get(h.GetKey()).(*schema.Set).List()
+	for _, dictionary := range dictionaries {
+		for _, sd := range stateDicts {
+			stateDict := sd.(map[string]interface{})
+			if dictionary["name"] == stateDict["name"] {
+				dictionary["force_destroy"] = stateDict["force_destroy"]
+				break
+			}
+		}
+	}
+
+	if err := d.Set(h.GetKey(), dictionaries); err != nil {
+		log.Printf("[WARN] Error setting Dictionary for (%s): %s", d.Id(), err)
+	}
+	return nil
+}
+
+func (h *DictionaryServiceAttributeHandler) Update(_ context.Context, _ *schema.ResourceData, _, _ map[string]interface {
+}, _ int, _ *gofastly.Client) error {
+	return nil
+}
+
+func (h *DictionaryServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	if !resource["force_destroy"].(bool) {
+		mayDelete, err := isDictionaryEmpty(d.Id(), resource["dictionary_id"].(string), conn)
+		if err != nil {
+			return err
+		}
+
+		if !mayDelete {
+			return fmt.Errorf("Cannot delete dictionary (%s), it is not empty. Either delete the items first, or set force_destroy to true and apply it before making this change.", resource["dictionary_id"].(string))
+		}
+	}
+
+	opts := gofastly.DeleteDictionaryInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	log.Printf("[DEBUG] Fastly Dictionary Removal opts: %#v", opts)
+	err := conn.DeleteDictionary(&opts)
+	if errRes, ok := err.(*gofastly.HTTPError); ok {
+		if errRes.StatusCode != 404 {
+			return err
+		}
+	} else if err != nil {
+		return err
 	}
 	return nil
 }
