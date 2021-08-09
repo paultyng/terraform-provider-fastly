@@ -46,7 +46,6 @@ func main() {
 		"fastly/block_fastly_service_v1_logging_openstack.go",
 		"fastly/block_fastly_service_v1_logging_scalyr.go",
 		"fastly/block_fastly_service_v1_logging_sftp.go",
-		"fastly/block_fastly_service_v1_package.go",
 		"fastly/block_fastly_service_v1_papertrail.go",
 		"fastly/block_fastly_service_v1_requestsetting.go",
 		"fastly/block_fastly_service_v1_responseobject.go",

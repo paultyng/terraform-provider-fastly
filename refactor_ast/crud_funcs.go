@@ -38,8 +38,14 @@ func generateNewCRUDFunctions(attributeHandlerName string, processFunc *dst.Func
 	})
 
 	for _, f := range functions {
-		// If any of the loops weren't found, populate the function with "return nil"
+		// If any of the loops weren't found, populate the function with "return nil" and rename params to "_"
 		if f.Body == nil {
+			for _, param := range f.Type.Params.List {
+				for i := range param.Names {
+					param.Names[i] = dst.NewIdent("_")
+				}
+			}
+
 			f.Body = &dst.BlockStmt{
 				List: []dst.Stmt{
 					getReturnNilStmt(),
