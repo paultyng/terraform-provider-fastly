@@ -3,12 +3,12 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"go/ast"
-	"go/format"
 	"go/parser"
-	"go/token"
 	"log"
 	"strings"
+
+	"github.com/dave/dst"
+	"github.com/dave/dst/decorator"
 )
 
 const filepathBase = "/Users/bengesoff/code/clients/fastly/terraform-provider-fastly/"
@@ -68,8 +68,9 @@ func main() {
 func transformFile(filename string) (string, error) {
 	// Open and parse the file
 	log.Println("Parsing file", filename)
-	fileSet := token.NewFileSet()
-	file, err := parser.ParseFile(fileSet, filename, nil, parser.ParseComments)
+
+	dec := decorator.NewDecorator(nil)
+	file, err := dec.ParseFile(filename, nil, parser.ParseComments)
 	if err != nil {
 		return "", err
 	}
@@ -128,7 +129,8 @@ func transformFile(filename string) (string, error) {
 	log.Println("Modified New* function")
 
 	var buf bytes.Buffer
-	err = format.Node(&buf, fileSet, file)
+	restorer := decorator.NewRestorer()
+	err = restorer.Fprint(&buf, file)
 	if err != nil {
 		return "", err
 	}
@@ -137,10 +139,10 @@ func transformFile(filename string) (string, error) {
 }
 
 // Loop through file and find a function with a name containing the given string
-func findFunc(file *ast.File, name string) *ast.FuncDecl {
-	var processFunc *ast.FuncDecl
+func findFunc(file *dst.File, name string) *dst.FuncDecl {
+	var processFunc *dst.FuncDecl
 	for _, decl := range file.Decls {
-		function, ok := decl.(*ast.FuncDecl)
+		function, ok := decl.(*dst.FuncDecl)
 		if !ok {
 			continue
 		}

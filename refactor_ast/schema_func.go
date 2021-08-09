@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
-	"go/ast"
+
+	"github.com/dave/dst"
 )
 
-func generateGetSchemaFunc(attributeHandlerName string, registerFunc *ast.FuncDecl) (*ast.FuncDecl, error) {
+func generateGetSchemaFunc(attributeHandlerName string, registerFunc *dst.FuncDecl) (dst.Decl, error) {
 	// Generate empty GetSchema function with no statements inside
 	schemaFunc := getEmptyGetSchemaFunc(attributeHandlerName)
+	schemaFunc.Decorations().Before = dst.EmptyLine
 
 	var returnStatementAdded = false
 
@@ -15,17 +17,18 @@ func generateGetSchemaFunc(attributeHandlerName string, registerFunc *ast.FuncDe
 	// If they don't match the pattern `s.Schema[*] = *` then add them verbatim to the new GetSchema function.
 	// If they DO match the pattern, then turn it into a return statement and add it to the end of the function
 	for _, stmt := range registerFunc.Body.List {
-		assignStmt, ok := stmt.(*ast.AssignStmt)
+		assignStmt, ok := stmt.(*dst.AssignStmt)
 		if ok {
-			indexExpr, ok := assignStmt.Lhs[0].(*ast.IndexExpr)
+			indexExpr, ok := assignStmt.Lhs[0].(*dst.IndexExpr)
 			if ok {
-				selectorExpr, ok := indexExpr.X.(*ast.SelectorExpr)
+				selectorExpr, ok := indexExpr.X.(*dst.SelectorExpr)
 				if ok {
-					xIdent, ok := selectorExpr.X.(*ast.Ident)
+					xIdent, ok := selectorExpr.X.(*dst.Ident)
 					if ok {
 						if xIdent.String() == "s" && selectorExpr.Sel.String() == "Schema" {
-							schemaFunc.Body.List = append(schemaFunc.Body.List, &ast.ReturnStmt{
-								Results: assignStmt.Rhs,
+							assignment := dst.Clone(assignStmt).(*dst.AssignStmt)
+							schemaFunc.Body.List = append(schemaFunc.Body.List, &dst.ReturnStmt{
+								Results: assignment.Rhs,
 							})
 							returnStatementAdded = true
 							break
@@ -34,7 +37,7 @@ func generateGetSchemaFunc(attributeHandlerName string, registerFunc *ast.FuncDe
 				}
 			}
 		}
-		schemaFunc.Body.List = append(schemaFunc.Body.List, stmt)
+		schemaFunc.Body.List = append(schemaFunc.Body.List, dst.Clone(stmt).(dst.Stmt))
 	}
 
 	if !returnStatementAdded {
@@ -44,35 +47,35 @@ func generateGetSchemaFunc(attributeHandlerName string, registerFunc *ast.FuncDe
 	return schemaFunc, nil
 }
 
-func getEmptyGetSchemaFunc(recv string) *ast.FuncDecl {
-	return &ast.FuncDecl{
-		Recv: &ast.FieldList{
-			List: []*ast.Field{
+func getEmptyGetSchemaFunc(recv string) *dst.FuncDecl {
+	return &dst.FuncDecl{
+		Recv: &dst.FieldList{
+			List: []*dst.Field{
 				{
-					Names: []*ast.Ident{
-						ast.NewIdent("h"),
+					Names: []*dst.Ident{
+						dst.NewIdent("h"),
 					},
-					Type: &ast.StarExpr{
-						X: ast.NewIdent(recv),
+					Type: &dst.StarExpr{
+						X: dst.NewIdent(recv),
 					},
 				},
 			},
 		},
-		Name: ast.NewIdent("GetSchema"),
-		Type: &ast.FuncType{
-			Results: &ast.FieldList{
-				List: []*ast.Field{
+		Name: dst.NewIdent("GetSchema"),
+		Type: &dst.FuncType{
+			Results: &dst.FieldList{
+				List: []*dst.Field{
 					{
-						Type: &ast.StarExpr{
-							X: &ast.SelectorExpr{
-								X:   ast.NewIdent("schema"),
-								Sel: ast.NewIdent("Schema"),
+						Type: &dst.StarExpr{
+							X: &dst.SelectorExpr{
+								X:   dst.NewIdent("schema"),
+								Sel: dst.NewIdent("Schema"),
 							},
 						},
 					},
 				},
 			},
 		},
-		Body: &ast.BlockStmt{},
+		Body: &dst.BlockStmt{},
 	}
 }

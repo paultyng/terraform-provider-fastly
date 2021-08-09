@@ -1,75 +1,74 @@
 package main
 
 import (
-	"go/ast"
-
-	"golang.org/x/tools/go/ast/astutil"
+	"github.com/dave/dst"
+	"github.com/dave/dst/dstutil"
 )
 
-func modifyReadFunc(readFunc *ast.FuncDecl) {
-	readFunc.Type.Params.List = []*ast.Field{
+func modifyReadFunc(readFunc *dst.FuncDecl) {
+	readFunc.Type.Params.List = []*dst.Field{
 		{
-			Names: []*ast.Ident{
-				ast.NewIdent("_"),
+			Names: []*dst.Ident{
+				dst.NewIdent("_"),
 			},
-			Type: &ast.SelectorExpr{
-				X:   ast.NewIdent("context"),
-				Sel: ast.NewIdent("Context"),
+			Type: &dst.SelectorExpr{
+				X:   dst.NewIdent("context"),
+				Sel: dst.NewIdent("Context"),
 			},
 		},
 		{
-			Names: []*ast.Ident{
-				ast.NewIdent("d"),
+			Names: []*dst.Ident{
+				dst.NewIdent("d"),
 			},
-			Type: &ast.StarExpr{
-				X: &ast.SelectorExpr{
-					X:   ast.NewIdent("schema"),
-					Sel: ast.NewIdent("ResourceData"),
+			Type: &dst.StarExpr{
+				X: &dst.SelectorExpr{
+					X:   dst.NewIdent("schema"),
+					Sel: dst.NewIdent("ResourceData"),
 				},
 			},
 		},
 		{
-			Names: []*ast.Ident{
-				ast.NewIdent("_"),
+			Names: []*dst.Ident{
+				dst.NewIdent("_"),
 			},
-			Type: &ast.MapType{
-				Key:   ast.NewIdent("string"),
-				Value: ast.NewIdent("interface{}"),
+			Type: &dst.MapType{
+				Key:   dst.NewIdent("string"),
+				Value: dst.NewIdent("interface{}"),
 			},
 		},
 		{
-			Names: []*ast.Ident{
-				ast.NewIdent("serviceVersion"),
+			Names: []*dst.Ident{
+				dst.NewIdent("serviceVersion"),
 			},
-			Type: ast.NewIdent("int"),
+			Type: dst.NewIdent("int"),
 		},
 		{
-			Names: []*ast.Ident{
-				ast.NewIdent("conn"),
+			Names: []*dst.Ident{
+				dst.NewIdent("conn"),
 			},
-			Type: &ast.StarExpr{
-				X: &ast.SelectorExpr{
-					X:   ast.NewIdent("gofastly"),
-					Sel: ast.NewIdent("Client"),
+			Type: &dst.StarExpr{
+				X: &dst.SelectorExpr{
+					X:   dst.NewIdent("gofastly"),
+					Sel: dst.NewIdent("Client"),
 				},
 			},
 		},
 	}
 
-	astutil.Apply(readFunc, func(cursor *astutil.Cursor) bool {
+	dstutil.Apply(readFunc, func(cursor *dstutil.Cursor) bool {
 		node := cursor.Node()
-		parentSelector, ok := node.(*ast.SelectorExpr)
+		parentSelector, ok := node.(*dst.SelectorExpr)
 		if ok {
-			selector, ok := parentSelector.X.(*ast.SelectorExpr)
+			selector, ok := parentSelector.X.(*dst.SelectorExpr)
 			if ok {
-				ident, ok := selector.X.(*ast.Ident)
+				ident, ok := selector.X.(*dst.Ident)
 				if ok {
 					if ident.String() == "s" {
 						if selector.Sel.String() != "ActiveVersion" {
 							panic(selector)
 						}
 
-						cursor.Replace(ast.NewIdent("serviceVersion"))
+						cursor.Replace(dst.NewIdent("serviceVersion"))
 					}
 				}
 			}

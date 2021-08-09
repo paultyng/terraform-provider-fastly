@@ -1,6 +1,8 @@
 package main
 
-import "go/ast"
+import (
+	"github.com/dave/dst"
+)
 
 // getKeyFunc returns a function that looks like:
 // ```
@@ -8,41 +10,44 @@ import "go/ast"
 //      return h.key
 // }
 // ```
-func getKeyFunc(recv string) *ast.FuncDecl {
-	return &ast.FuncDecl{
-		Recv: &ast.FieldList{
-			List: []*ast.Field{
+func getKeyFunc(recv string) *dst.FuncDecl {
+	f := &dst.FuncDecl{
+		Recv: &dst.FieldList{
+			List: []*dst.Field{
 				{
-					Names: []*ast.Ident{
-						ast.NewIdent("h"),
+					Names: []*dst.Ident{
+						dst.NewIdent("h"),
 					},
-					Type: &ast.StarExpr{
-						X: ast.NewIdent(recv),
+					Type: &dst.StarExpr{
+						X: dst.NewIdent(recv),
 					},
 				},
 			},
 		},
-		Name: ast.NewIdent("Key"),
-		Type: &ast.FuncType{
-			Results: &ast.FieldList{
-				List: []*ast.Field{
+		Name: dst.NewIdent("Key"),
+		Type: &dst.FuncType{
+			Results: &dst.FieldList{
+				List: []*dst.Field{
 					{
-						Type: ast.NewIdent("string"),
+						Type: dst.NewIdent("string"),
 					},
 				},
 			},
 		},
-		Body: &ast.BlockStmt{
-			List: []ast.Stmt{
-				&ast.ReturnStmt{
-					Results: []ast.Expr{
-						&ast.SelectorExpr{
-							X:   ast.NewIdent("h"),
-							Sel: ast.NewIdent("key"),
+		Body: &dst.BlockStmt{
+			List: []dst.Stmt{
+				&dst.ReturnStmt{
+					Results: []dst.Expr{
+						&dst.SelectorExpr{
+							X:   dst.NewIdent("h"),
+							Sel: dst.NewIdent("key"),
 						},
 					},
 				},
 			},
 		},
 	}
+
+	f.Decorations().Before = dst.EmptyLine
+	return f
 }

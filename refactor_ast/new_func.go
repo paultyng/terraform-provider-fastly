@@ -1,20 +1,19 @@
 package main
 
 import (
-	"go/ast"
-
-	"golang.org/x/tools/go/ast/astutil"
+	"github.com/dave/dst"
+	"github.com/dave/dst/dstutil"
 )
 
-func modifyNewFunc(newFunc *ast.FuncDecl) {
-	astutil.Apply(newFunc, func(cursor *astutil.Cursor) bool {
+func modifyNewFunc(newFunc *dst.FuncDecl) {
+	dstutil.Apply(newFunc, func(cursor *dstutil.Cursor) bool {
 		node := cursor.Node()
-		returnStmt, ok := node.(*ast.ReturnStmt)
+		returnStmt, ok := node.(*dst.ReturnStmt)
 		if ok {
-			cursor.Replace(&ast.ReturnStmt{
-				Results: []ast.Expr{
-					&ast.CallExpr{
-						Fun:  ast.NewIdent("BlockSetToServiceAttributeDefinition"),
+			cursor.Replace(&dst.ReturnStmt{
+				Results: []dst.Expr{
+					&dst.CallExpr{
+						Fun:  dst.NewIdent("BlockSetToServiceAttributeDefinition"),
 						Args: returnStmt.Results,
 					},
 				},

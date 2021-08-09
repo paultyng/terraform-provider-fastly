@@ -1,33 +1,34 @@
 package main
 
 import (
-	"go/ast"
 	"log"
 
-	"golang.org/x/tools/go/ast/astutil"
+	"github.com/dave/dst"
+	"github.com/dave/dst/dstutil"
 )
 
-func generateNewCRUDFunctions(attributeHandlerName string, processFunc *ast.FuncDecl) (map[string]*ast.FuncDecl, error) {
+func generateNewCRUDFunctions(attributeHandlerName string, processFunc *dst.FuncDecl) (map[string]*dst.FuncDecl, error) {
 	// Create new functions for the missing CRUD methods
-	functions := map[string]*ast.FuncDecl{}
+	functions := map[string]*dst.FuncDecl{}
 	functions["Create"] = newCRUDFunc(attributeHandlerName, "Create")
 	functions["Update"] = newCRUDFunc(attributeHandlerName, "Update")
 	functions["Delete"] = newCRUDFunc(attributeHandlerName, "Delete")
 
 	// Search the Process function for For loops, to pull the bodies into the CRUD functions
 	// For loops should be of the format "for x, y := range diffResult.z {"
-	ast.Inspect(processFunc, func(node ast.Node) bool {
-		forLoop, ok := node.(*ast.RangeStmt)
+	dst.Inspect(processFunc, func(node dst.Node) bool {
+		forLoop, ok := node.(*dst.RangeStmt)
 		if ok {
-			selector, ok := forLoop.X.(*ast.SelectorExpr)
+			selector, ok := forLoop.X.(*dst.SelectorExpr)
 			if ok {
-				firstBitOfSelector, ok := selector.X.(*ast.Ident)
+				firstBitOfSelector, ok := selector.X.(*dst.Ident)
 				if ok {
 					// Check we've got "for x, y := range diffResult.z {"
 					if firstBitOfSelector.String() == "diffResult" {
 						log.Printf("Found for loop for diffResult.%s in Process func\n", selector.Sel.String())
 						// Modify body and add it to the corresponding function
-						funcBody := tweakFuncBody(forLoop.Body)
+						newBody := dst.Clone(forLoop.Body).(*dst.BlockStmt)
+						funcBody := tweakFuncBody(newBody)
 						functions[getFuncName(selector.Sel.String())].Body = funcBody
 					}
 				}
@@ -36,34 +37,40 @@ func generateNewCRUDFunctions(attributeHandlerName string, processFunc *ast.Func
 		return true
 	})
 
-	// If any of the loops weren't found, populate the function with "return nil"
 	for _, f := range functions {
+		// If any of the loops weren't found, populate the function with "return nil"
 		if f.Body == nil {
-			f.Body = &ast.BlockStmt{
-				List: []ast.Stmt{
+			f.Body = &dst.BlockStmt{
+				List: []dst.Stmt{
 					getReturnNilStmt(),
 				},
 			}
 		}
+
+		// Ensure there is a blank line before each function
+		f.Decorations().Before = dst.EmptyLine
 	}
 
 	return functions, nil
 }
 
 // Makes requisite tweaks to the body of the For loop to adapt it to being a function body
-func tweakFuncBody(body *ast.BlockStmt) *ast.BlockStmt {
+func tweakFuncBody(body *dst.BlockStmt) *dst.BlockStmt {
 	// Remove the first line (usually an unneeded type cast of the `resource` variable)
 	forBody := body.List[1:]
+
+	// Ensure there is no random blank line at the start of the body
+	forBody[0].Decorations().Before = dst.NewLine
 
 	// Add a return nil statement to the end
 	forBody = append(forBody, getReturnNilStmt())
 
 	// Delete any statements declaring a variable called `modified`
-	var funcBody = &ast.BlockStmt{}
+	var funcBody = &dst.BlockStmt{}
 	for _, stmt := range forBody {
-		assignment, ok := stmt.(*ast.AssignStmt)
+		assignment, ok := stmt.(*dst.AssignStmt)
 		if ok {
-			identifier, ok := assignment.Lhs[0].(*ast.Ident)
+			identifier, ok := assignment.Lhs[0].(*dst.Ident)
 			if ok {
 				if identifier.String() == "modified" {
 					continue
@@ -74,12 +81,12 @@ func tweakFuncBody(body *ast.BlockStmt) *ast.BlockStmt {
 	}
 
 	// Rename any references to `latestVersion` to `serviceVersion`
-	astutil.Apply(funcBody, func(cursor *astutil.Cursor) bool {
+	dstutil.Apply(funcBody, func(cursor *dstutil.Cursor) bool {
 		node := cursor.Node()
-		identifier, ok := node.(*ast.Ident)
+		identifier, ok := node.(*dst.Ident)
 		if ok {
 			if identifier.String() == "latestVersion" {
-				cursor.Replace(ast.NewIdent("serviceVersion"))
+				cursor.Replace(dst.NewIdent("serviceVersion"))
 			}
 		}
 		return true
@@ -89,17 +96,17 @@ func tweakFuncBody(body *ast.BlockStmt) *ast.BlockStmt {
 }
 
 // Extract the name of the function receiver, e.g. `func (x *thisBit) Name() {}`
-func getFuncRecv(f *ast.FuncDecl) string {
+func getFuncRecv(f *dst.FuncDecl) string {
 	if f.Recv.NumFields() == 0 {
 		return ""
 	}
 
-	star, ok := f.Recv.List[0].Type.(*ast.StarExpr)
+	star, ok := f.Recv.List[0].Type.(*dst.StarExpr)
 	if !ok {
 		return ""
 	}
 
-	ident, ok := star.X.(*ast.Ident)
+	ident, ok := star.X.(*dst.Ident)
 	if !ok {
 		return ""
 	}
@@ -122,27 +129,27 @@ func getFuncName(sel string) string {
 }
 
 // Create a new function declaration with the necessary signature
-func newCRUDFunc(recv, name string) *ast.FuncDecl {
-	return &ast.FuncDecl{
-		Recv: &ast.FieldList{
-			List: []*ast.Field{
+func newCRUDFunc(recv, name string) *dst.FuncDecl {
+	return &dst.FuncDecl{
+		Recv: &dst.FieldList{
+			List: []*dst.Field{
 				{
-					Names: []*ast.Ident{
-						ast.NewIdent("h"),
+					Names: []*dst.Ident{
+						dst.NewIdent("h"),
 					},
-					Type: &ast.StarExpr{
-						X: ast.NewIdent(recv),
+					Type: &dst.StarExpr{
+						X: dst.NewIdent(recv),
 					},
 				},
 			},
 		},
-		Name: ast.NewIdent(name),
-		Type: &ast.FuncType{
+		Name: dst.NewIdent(name),
+		Type: &dst.FuncType{
 			Params: getFuncParams(name),
-			Results: &ast.FieldList{
-				List: []*ast.Field{
+			Results: &dst.FieldList{
+				List: []*dst.Field{
 					{
-						Type: ast.NewIdent("error"),
+						Type: dst.NewIdent("error"),
 					},
 				},
 			},
@@ -151,56 +158,56 @@ func newCRUDFunc(recv, name string) *ast.FuncDecl {
 }
 
 // Generate the necessary function parameters for newCRUDFunc
-func getFuncParams(name string) *ast.FieldList {
+func getFuncParams(name string) *dst.FieldList {
 	if name == "Update" {
-		return &ast.FieldList{
-			List: []*ast.Field{
+		return &dst.FieldList{
+			List: []*dst.Field{
 				{
-					Names: []*ast.Ident{
-						ast.NewIdent("_"),
+					Names: []*dst.Ident{
+						dst.NewIdent("_"),
 					},
-					Type: &ast.SelectorExpr{
-						X:   ast.NewIdent("context"),
-						Sel: ast.NewIdent("Context"),
+					Type: &dst.SelectorExpr{
+						X:   dst.NewIdent("context"),
+						Sel: dst.NewIdent("Context"),
 					},
 				},
 				{
-					Names: []*ast.Ident{
-						ast.NewIdent("d"),
+					Names: []*dst.Ident{
+						dst.NewIdent("d"),
 					},
-					Type: &ast.StarExpr{
-						X: &ast.SelectorExpr{
-							X:   ast.NewIdent("schema"),
-							Sel: ast.NewIdent("ResourceData"),
+					Type: &dst.StarExpr{
+						X: &dst.SelectorExpr{
+							X:   dst.NewIdent("schema"),
+							Sel: dst.NewIdent("ResourceData"),
 						},
 					},
 				},
 				{
-					Names: []*ast.Ident{
-						ast.NewIdent("resource"),
-						ast.NewIdent("modified"),
+					Names: []*dst.Ident{
+						dst.NewIdent("resource"),
+						dst.NewIdent("modified"),
 					},
-					Type: &ast.MapType{
-						Key: ast.NewIdent("string"),
-						Value: &ast.InterfaceType{
-							Methods: &ast.FieldList{},
+					Type: &dst.MapType{
+						Key: dst.NewIdent("string"),
+						Value: &dst.InterfaceType{
+							Methods: &dst.FieldList{},
 						},
 					},
 				},
 				{
-					Names: []*ast.Ident{
-						ast.NewIdent("serviceVersion"),
+					Names: []*dst.Ident{
+						dst.NewIdent("serviceVersion"),
 					},
-					Type: ast.NewIdent("int"),
+					Type: dst.NewIdent("int"),
 				},
 				{
-					Names: []*ast.Ident{
-						ast.NewIdent("conn"),
+					Names: []*dst.Ident{
+						dst.NewIdent("conn"),
 					},
-					Type: &ast.StarExpr{
-						X: &ast.SelectorExpr{
-							X:   ast.NewIdent("gofastly"),
-							Sel: ast.NewIdent("Client"),
+					Type: &dst.StarExpr{
+						X: &dst.SelectorExpr{
+							X:   dst.NewIdent("gofastly"),
+							Sel: dst.NewIdent("Client"),
 						},
 					},
 				},
@@ -208,53 +215,53 @@ func getFuncParams(name string) *ast.FieldList {
 		}
 	}
 
-	return &ast.FieldList{
-		List: []*ast.Field{
+	return &dst.FieldList{
+		List: []*dst.Field{
 			{
-				Names: []*ast.Ident{
-					ast.NewIdent("_"),
+				Names: []*dst.Ident{
+					dst.NewIdent("_"),
 				},
-				Type: &ast.SelectorExpr{
-					X:   ast.NewIdent("context"),
-					Sel: ast.NewIdent("Context"),
+				Type: &dst.SelectorExpr{
+					X:   dst.NewIdent("context"),
+					Sel: dst.NewIdent("Context"),
 				},
 			},
 			{
-				Names: []*ast.Ident{
-					ast.NewIdent("d"),
+				Names: []*dst.Ident{
+					dst.NewIdent("d"),
 				},
-				Type: &ast.StarExpr{
-					X: &ast.SelectorExpr{
-						X:   ast.NewIdent("schema"),
-						Sel: ast.NewIdent("ResourceData"),
+				Type: &dst.StarExpr{
+					X: &dst.SelectorExpr{
+						X:   dst.NewIdent("schema"),
+						Sel: dst.NewIdent("ResourceData"),
 					},
 				},
 			},
 			{
-				Names: []*ast.Ident{
-					ast.NewIdent("resource"),
+				Names: []*dst.Ident{
+					dst.NewIdent("resource"),
 				},
-				Type: &ast.MapType{
-					Key: ast.NewIdent("string"),
-					Value: &ast.InterfaceType{
-						Methods: &ast.FieldList{},
+				Type: &dst.MapType{
+					Key: dst.NewIdent("string"),
+					Value: &dst.InterfaceType{
+						Methods: &dst.FieldList{},
 					},
 				},
 			},
 			{
-				Names: []*ast.Ident{
-					ast.NewIdent("serviceVersion"),
+				Names: []*dst.Ident{
+					dst.NewIdent("serviceVersion"),
 				},
-				Type: ast.NewIdent("int"),
+				Type: dst.NewIdent("int"),
 			},
 			{
-				Names: []*ast.Ident{
-					ast.NewIdent("conn"),
+				Names: []*dst.Ident{
+					dst.NewIdent("conn"),
 				},
-				Type: &ast.StarExpr{
-					X: &ast.SelectorExpr{
-						X:   ast.NewIdent("gofastly"),
-						Sel: ast.NewIdent("Client"),
+				Type: &dst.StarExpr{
+					X: &dst.SelectorExpr{
+						X:   dst.NewIdent("gofastly"),
+						Sel: dst.NewIdent("Client"),
 					},
 				},
 			},
@@ -262,10 +269,10 @@ func getFuncParams(name string) *ast.FieldList {
 	}
 }
 
-func getReturnNilStmt() ast.Stmt {
-	return &ast.ReturnStmt{
-		Results: []ast.Expr{
-			ast.NewIdent("nil"),
+func getReturnNilStmt() dst.Stmt {
+	return &dst.ReturnStmt{
+		Results: []dst.Expr{
+			dst.NewIdent("nil"),
 		},
 	}
 }
