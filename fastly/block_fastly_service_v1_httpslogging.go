@@ -63,9 +63,9 @@ func (h *HTTPSLoggingServiceAttributeHandler) Process(ctx context.Context, d *sc
 	}
 
 	// CREATE new resources
-	for _, nRaw := range diffResult.Added {
-		hf := nRaw.(map[string]interface{})
-		opts := h.buildCreate(hf, serviceID, latestVersion)
+	for _, resource := range diffResult.Added {
+		resource := resource.(map[string]interface{})
+		opts := h.buildCreate(resource, serviceID, latestVersion)
 
 		log.Printf("[DEBUG] Fastly HTTPS logging addition opts: %#v", opts)
 
