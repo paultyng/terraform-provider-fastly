@@ -15,7 +15,7 @@ type GzipServiceAttributeHandler struct {
 }
 
 func NewServiceGzip(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&GzipServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&GzipServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "gzip",
 			serviceMetadata: sa,

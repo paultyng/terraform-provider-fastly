@@ -14,7 +14,7 @@ type LogshuttleServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingLogshuttle(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&LogshuttleServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&LogshuttleServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_logshuttle",
 			serviceMetadata: sa,

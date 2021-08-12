@@ -15,7 +15,7 @@ type HeaderServiceAttributeHandler struct {
 }
 
 func NewServiceHeader(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&HeaderServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&HeaderServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "header",
 			serviceMetadata: sa,

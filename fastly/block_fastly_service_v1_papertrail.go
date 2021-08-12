@@ -14,7 +14,7 @@ type PaperTrailServiceAttributeHandler struct {
 }
 
 func NewServicePaperTrail(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&PaperTrailServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&PaperTrailServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "papertrail",
 			serviceMetadata: sa,

@@ -14,7 +14,7 @@ type DictionaryServiceAttributeHandler struct {
 }
 
 func NewServiceDictionary(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&DictionaryServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&DictionaryServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "dictionary",
 			serviceMetadata: sa,

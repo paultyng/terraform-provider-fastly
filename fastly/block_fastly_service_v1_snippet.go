@@ -15,7 +15,7 @@ type SnippetServiceAttributeHandler struct {
 }
 
 func NewServiceSnippet(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&SnippetServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&SnippetServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "snippet",
 			serviceMetadata: sa,

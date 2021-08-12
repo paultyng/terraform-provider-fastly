@@ -14,7 +14,7 @@ type HerokuServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingHeroku(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&HerokuServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&HerokuServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_heroku",
 			serviceMetadata: sa,

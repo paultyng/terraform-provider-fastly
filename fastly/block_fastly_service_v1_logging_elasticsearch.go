@@ -14,7 +14,7 @@ type ElasticSearchServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingElasticSearch(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&ElasticSearchServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&ElasticSearchServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_elasticsearch",
 			serviceMetadata: sa,

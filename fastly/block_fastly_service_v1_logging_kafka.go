@@ -14,7 +14,7 @@ type KafkaServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingKafka(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&KafkaServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&KafkaServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_kafka",
 			serviceMetadata: sa,

@@ -14,7 +14,7 @@ type HoneycombServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingHoneycomb(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&HoneycombServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&HoneycombServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_honeycomb",
 			serviceMetadata: sa,

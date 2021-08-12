@@ -14,7 +14,7 @@ type SFTPServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingSFTP(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&SFTPServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&SFTPServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_sftp",
 			serviceMetadata: sa,

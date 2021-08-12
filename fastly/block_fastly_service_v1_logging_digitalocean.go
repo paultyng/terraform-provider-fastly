@@ -14,7 +14,7 @@ type DigitalOceanServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingDigitalOcean(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&DigitalOceanServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&DigitalOceanServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_digitalocean",
 			serviceMetadata: sa,

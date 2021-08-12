@@ -14,7 +14,7 @@ type DatadogServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingDatadog(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&DatadogServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&DatadogServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_datadog",
 			serviceMetadata: sa,

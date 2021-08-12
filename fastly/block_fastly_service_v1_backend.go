@@ -15,7 +15,7 @@ type BackendServiceAttributeHandler struct {
 }
 
 func NewServiceBackend(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&BackendServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&BackendServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "backend",
 			serviceMetadata: sa,

@@ -14,7 +14,7 @@ type DomainServiceAttributeHandler struct {
 }
 
 func NewServiceDomain(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&DomainServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&DomainServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "domain",
 			serviceMetadata: sa,

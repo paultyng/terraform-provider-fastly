@@ -15,7 +15,7 @@ type DirectorServiceAttributeHandler struct {
 }
 
 func NewServiceDirector(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&DirectorServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&DirectorServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "director",
 			serviceMetadata: sa,

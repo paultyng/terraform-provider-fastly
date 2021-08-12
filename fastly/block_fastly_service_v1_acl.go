@@ -14,7 +14,7 @@ type ACLServiceAttributeHandler struct {
 }
 
 func NewServiceACL() ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&ACLServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&ACLServiceAttributeHandler{
 		key: "acl",
 	})
 }
@@ -68,8 +68,7 @@ func (h *ACLServiceAttributeHandler) Create(_ context.Context, d *schema.Resourc
 	return nil
 }
 
-func (h *ACLServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, resource map[string]interface{}, latestVersion int, conn *gofastly.Client) error {
-
+func (h *ACLServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, latestVersion int, conn *gofastly.Client) error {
 	log.Printf("[DEBUG] Refreshing ACLs for (%s)", d.Id())
 	aclList, err := conn.ListACLs(&gofastly.ListACLsInput{
 		ServiceID:      d.Id(),

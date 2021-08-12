@@ -14,7 +14,7 @@ type ResponseObjectServiceAttributeHandler struct {
 }
 
 func NewServiceResponseObject(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&ResponseObjectServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&ResponseObjectServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "response_object",
 			serviceMetadata: sa,

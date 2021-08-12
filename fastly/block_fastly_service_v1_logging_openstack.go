@@ -14,7 +14,7 @@ type OpenstackServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingOpenstack(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&OpenstackServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&OpenstackServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_openstack",
 			serviceMetadata: sa,

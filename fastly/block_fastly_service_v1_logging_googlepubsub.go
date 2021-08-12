@@ -14,7 +14,7 @@ type GooglePubSubServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingGooglePubSub(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&GooglePubSubServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&GooglePubSubServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_googlepubsub",
 			serviceMetadata: sa,

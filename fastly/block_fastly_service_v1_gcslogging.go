@@ -14,7 +14,7 @@ type GCSLoggingServiceAttributeHandler struct {
 }
 
 func NewServiceGCSLogging(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&GCSLoggingServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&GCSLoggingServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "gcslogging",
 			serviceMetadata: sa,

@@ -15,7 +15,7 @@ type ConditionServiceAttributeHandler struct {
 }
 
 func NewServiceCondition(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&ConditionServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&ConditionServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "condition",
 			serviceMetadata: sa,

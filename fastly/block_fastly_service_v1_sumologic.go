@@ -14,7 +14,7 @@ type SumologicServiceAttributeHandler struct {
 }
 
 func NewServiceSumologic(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&SumologicServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&SumologicServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "sumologic",
 			serviceMetadata: sa,

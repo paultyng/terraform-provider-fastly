@@ -15,7 +15,7 @@ type S3LoggingServiceAttributeHandler struct {
 }
 
 func NewServiceS3Logging(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&S3LoggingServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&S3LoggingServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "s3logging",
 			serviceMetadata: sa,

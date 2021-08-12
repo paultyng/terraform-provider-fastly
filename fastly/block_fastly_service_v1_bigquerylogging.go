@@ -14,7 +14,7 @@ type BigQueryLoggingServiceAttributeHandler struct {
 }
 
 func NewServiceBigQueryLogging(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&BigQueryLoggingServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&BigQueryLoggingServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "bigquerylogging",
 			serviceMetadata: sa,

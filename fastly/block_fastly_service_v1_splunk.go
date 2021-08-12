@@ -14,7 +14,7 @@ type SplunkServiceAttributeHandler struct {
 }
 
 func NewServiceSplunk(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&SplunkServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&SplunkServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "splunk",
 			serviceMetadata: sa,

@@ -14,7 +14,7 @@ type CloudfilesServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingCloudfiles(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&CloudfilesServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&CloudfilesServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_cloudfiles",
 			serviceMetadata: sa,

@@ -14,7 +14,7 @@ type BlobStorageLoggingServiceAttributeHandler struct {
 }
 
 func NewServiceBlobStorageLogging(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&BlobStorageLoggingServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&BlobStorageLoggingServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "blobstoragelogging",
 			serviceMetadata: sa,

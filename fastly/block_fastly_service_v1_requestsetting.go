@@ -15,7 +15,7 @@ type RequestSettingServiceAttributeHandler struct {
 }
 
 func NewServiceRequestSetting(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&RequestSettingServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&RequestSettingServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "request_setting",
 			serviceMetadata: sa,

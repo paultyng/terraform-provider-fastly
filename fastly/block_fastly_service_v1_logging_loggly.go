@@ -14,7 +14,7 @@ type LogglyServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingLoggly(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&LogglyServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&LogglyServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_loggly",
 			serviceMetadata: sa,

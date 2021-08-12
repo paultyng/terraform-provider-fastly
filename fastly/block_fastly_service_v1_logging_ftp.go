@@ -14,7 +14,7 @@ type FTPServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingFTP(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&FTPServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&FTPServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_ftp",
 			serviceMetadata: sa,

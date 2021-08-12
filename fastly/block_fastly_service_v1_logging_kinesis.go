@@ -14,7 +14,7 @@ type KinesisServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingKinesis(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&KinesisServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&KinesisServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_kinesis",
 			serviceMetadata: sa,

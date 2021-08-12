@@ -14,7 +14,7 @@ type SyslogServiceAttributeHandler struct {
 }
 
 func NewServiceSyslog(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&SyslogServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&SyslogServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "syslog",
 			serviceMetadata: sa,

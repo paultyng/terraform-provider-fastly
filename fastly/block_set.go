@@ -8,23 +8,54 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-type BlockSetAttributeDefinition interface {
+// ServiceCRUDAttributeDefinition is an interface for most ServiceAttributeDefinition implementations which can be
+// represented by the four CRUD operations. Most service attributes will fall into this category and should implement
+// this interface instead of ServiceAttributeDefinition directly. An attribute that implements
+// ServiceCRUDAttributeDefinition can use the ToServiceAttributeDefinition function defined below in its constructor to
+// convert it to the ServiceAttributeDefinition that the service resources expect.
+// The requirements for a service attribute to be defined in terms of this interface are:
+// - the attribute must be a nested block with a schema type of schema.TypeSet
+// - the nested block must have its own "name" attribute which uniquely defines the nested resource
+// - the block must support all four of the CRUD operations, or at least Create, Read, and Delete if updating the
+//   resource is not supported
+// Some service attributes don't fit into these constraints are better suited to implementing the
+// ServiceAttributeDefinition directly. One example is the "package" block in block_fastly_service_v1_package.go, which
+// only uses an Update operation, and therefore implements ServiceAttributeDefinition directly without
+// ServiceCRUDAttributeDefinition.
+type ServiceCRUDAttributeDefinition interface {
+	// Key returns the name of the nested block. This is used when composing the schema into the parent Service schema.
 	Key() string
 
+	// GetSchema returns the schema.Schema of the nested block. This gets composed into the parent Service schema.
 	GetSchema() *schema.Schema
 
+	// Create should create an instance of the nested block. The resource argument will be a map containing all of the
+	// attributes from the schema of the nested block. The d argument, of type schema.ResourceData, will contain the
+	// data for the whole service, so the resource argument should be used for most of the creation parameters. The d
+	// argument should just be used for things like getting the service ID. The serviceVersion argument should be used
+	// to decide which version of the service to make updates to. This will be an unlocked version that the base service
+	// update function created.
 	Create(ctx context.Context, d *schema.ResourceData, resource map[string]interface{}, serviceVersion int, conn *gofastly.Client) error
+	// Read should refresh the state of all of the instance of the nested blocks. See the description of Create for more
+	// details about the arguments.
 	Read(ctx context.Context, d *schema.ResourceData, resource map[string]interface{}, serviceVersion int, conn *gofastly.Client) error
+	// Update should make changes to an existing instance of the nested block. The arguments are as described in the
+	// Create comments, with the exception of modified which will contain only the attributes that have changed.
 	Update(ctx context.Context, d *schema.ResourceData, resource, modified map[string]interface{}, serviceVersion int, conn *gofastly.Client) error
+	// Delete should remove the instance of the nested block. See the description of Create for more details about the
+	// arguments.
 	Delete(ctx context.Context, d *schema.ResourceData, resource map[string]interface{}, serviceVersion int, conn *gofastly.Client) error
 }
 
-func BlockSetToServiceAttributeDefinition(definition BlockSetAttributeDefinition) ServiceAttributeDefinition {
+// ToServiceAttributeDefinition returns an implementation of ServiceAttributeDefinition for a particular implementation
+// of ServiceCRUDAttributeDefinition. It implements the Process and Read methods from ServiceAttributeDefinition using
+// the SetDiff functions.
+func ToServiceAttributeDefinition(definition ServiceCRUDAttributeDefinition) ServiceAttributeDefinition {
 	return &blockSetAttributeHandler{definition}
 }
 
 type blockSetAttributeHandler struct {
-	handler BlockSetAttributeDefinition
+	handler ServiceCRUDAttributeDefinition
 }
 
 func (h *blockSetAttributeHandler) Register(s *schema.Resource) error {

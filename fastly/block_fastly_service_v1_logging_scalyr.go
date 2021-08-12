@@ -14,7 +14,7 @@ type ScalyrServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingScalyr(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&ScalyrServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&ScalyrServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_scalyr",
 			serviceMetadata: sa,

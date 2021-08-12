@@ -14,7 +14,7 @@ type LogentriesServiceAttributeHandler struct {
 }
 
 func NewServiceLogentries(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&LogentriesServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&LogentriesServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logentries",
 			serviceMetadata: sa,

@@ -15,7 +15,7 @@ type CacheSettingServiceAttributeHandler struct {
 }
 
 func NewServiceCacheSetting(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&CacheSettingServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&CacheSettingServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "cache_setting",
 			serviceMetadata: sa,

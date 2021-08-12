@@ -14,7 +14,7 @@ type HealthCheckServiceAttributeHandler struct {
 }
 
 func NewServiceHealthCheck(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&HealthCheckServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&HealthCheckServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "healthcheck",
 			serviceMetadata: sa,

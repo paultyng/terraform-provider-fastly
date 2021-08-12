@@ -15,7 +15,7 @@ type VCLServiceAttributeHandler struct {
 }
 
 func NewServiceVCL(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&VCLServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&VCLServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "vcl",
 			serviceMetadata: sa,

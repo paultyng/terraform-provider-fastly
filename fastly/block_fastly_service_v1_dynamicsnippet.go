@@ -15,7 +15,7 @@ type DynamicSnippetServiceAttributeHandler struct {
 }
 
 func NewServiceDynamicSnippet(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&DynamicSnippetServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&DynamicSnippetServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "dynamicsnippet",
 			serviceMetadata: sa,

@@ -15,7 +15,7 @@ type HTTPSLoggingServiceAttributeHandler struct {
 }
 
 func NewServiceHTTPSLogging(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&HTTPSLoggingServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&HTTPSLoggingServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "httpslogging",
 			serviceMetadata: sa,

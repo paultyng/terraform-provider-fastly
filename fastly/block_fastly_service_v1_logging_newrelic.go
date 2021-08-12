@@ -14,7 +14,7 @@ type NewRelicServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingNewRelic(sa ServiceMetadata) ServiceAttributeDefinition {
-	return BlockSetToServiceAttributeDefinition(&NewRelicServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&NewRelicServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_newrelic",
 			serviceMetadata: sa,
