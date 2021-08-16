@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -9,138 +10,21 @@ import (
 )
 
 type ACLServiceAttributeHandler struct {
-	*DefaultServiceAttributeHandler
+	key string
 }
 
-func NewServiceACL(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &ACLServiceAttributeHandler{
-		&DefaultServiceAttributeHandler{
-			key:             "acl",
-			serviceMetadata: sa,
-		},
-	}
-}
-
-func (h *ACLServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	oldACLVal, newACLVal := d.GetChange(h.GetKey())
-	if oldACLVal == nil {
-		oldACLVal = new(schema.Set)
-	}
-	if newACLVal == nil {
-		newACLVal = new(schema.Set)
-	}
-
-	oldSet := oldACLVal.(*schema.Set)
-	newSet := newACLVal.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
-		}
-		return t["name"], nil
+func NewServiceACL() ServiceAttributeDefinition {
+	return ToServiceAttributeDefinition(&ACLServiceAttributeHandler{
+		key: "acl",
 	})
-
-	diffResult, err := setDiff.Diff(oldSet, newSet)
-	if err != nil {
-		return err
-	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-
-		if !resource["force_destroy"].(bool) {
-			mayDelete, err := isACLEmpty(d.Id(), resource["acl_id"].(string), conn)
-			if err != nil {
-				return err
-			}
-
-			if !mayDelete {
-				return fmt.Errorf("Cannot delete ACL (%s), list is not empty. Either delete the entries first, or set force_destroy to true and apply it before making this change.", resource["acl_id"].(string))
-			}
-		}
-
-		opts := gofastly.DeleteACLInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		log.Printf("[DEBUG] Fastly ACL removal opts: %#v", opts)
-		err := conn.DeleteACL(&opts)
-
-		if errRes, ok := err.(*gofastly.HTTPError); ok {
-			if errRes.StatusCode != 404 {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		resource := resource.(map[string]interface{})
-		opts := gofastly.CreateACLInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		log.Printf("[DEBUG] Fastly ACL creation opts: %#v", opts)
-		_, err := conn.CreateACL(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources (NOT IMPLEMENTED)
-	//
-	// Although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	//
-	// Because of this we do not implement any logic for updating the ACL
-	// resource, only CREATE and DELETE functionality.
-
-	return nil
 }
 
-func (h *ACLServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
-
-	log.Printf("[DEBUG] Refreshing ACLs for (%s)", d.Id())
-	aclList, err := conn.ListACLs(&gofastly.ListACLsInput{
-		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
-	})
-	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up ACLs for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
-	}
-
-	al := flattenACLs(aclList)
-
-	// Match up force_destroy on each ACL from schema.ResourceData to avoid d.Set overwriting it with null
-	stateACLs := d.Get(h.GetKey()).(*schema.Set).List()
-	for _, acl := range al {
-		for _, sa := range stateACLs {
-			stateACL := sa.(map[string]interface{})
-			if acl["name"] == stateACL["name"] {
-				acl["force_destroy"] = stateACL["force_destroy"]
-				break
-			}
-		}
-	}
-
-	if err := d.Set(h.GetKey(), al); err != nil {
-		log.Printf("[WARN] Error setting ACLs for (%s): %s", d.Id(), err)
-	}
-
-	return nil
+func (h *ACLServiceAttributeHandler) Key() string {
+	return h.key
 }
 
-func (h *ACLServiceAttributeHandler) Register(s *schema.Resource) error {
-	s.Schema[h.GetKey()] = &schema.Schema{
+func (h *ACLServiceAttributeHandler) GetSchema() *schema.Schema {
+	return &schema.Schema{
 		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
@@ -166,6 +50,88 @@ func (h *ACLServiceAttributeHandler) Register(s *schema.Resource) error {
 			},
 		},
 	}
+}
+
+func (h *ACLServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface{}, latestVersion int, conn *gofastly.Client) error {
+	opts := gofastly.CreateACLInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: latestVersion,
+		Name:           resource["name"].(string),
+	}
+
+	log.Printf("[DEBUG] Fastly ACL creation opts: %#v", opts)
+	_, err := conn.CreateACL(&opts)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (h *ACLServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, latestVersion int, conn *gofastly.Client) error {
+	log.Printf("[DEBUG] Refreshing ACLs for (%s)", d.Id())
+	aclList, err := conn.ListACLs(&gofastly.ListACLsInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: latestVersion,
+	})
+	if err != nil {
+		return fmt.Errorf("[ERR] Error looking up ACLs for (%s), version (%v): %s", d.Id(), latestVersion, err)
+	}
+
+	al := flattenACLs(aclList)
+
+	// Match up force_destroy on each ACL from schema.ResourceData to avoid d.Set overwriting it with null
+	stateACLs := d.Get(h.Key()).(*schema.Set).List()
+	for _, acl := range al {
+		for _, sa := range stateACLs {
+			stateACL := sa.(map[string]interface{})
+			if acl["name"] == stateACL["name"] {
+				acl["force_destroy"] = stateACL["force_destroy"]
+				break
+			}
+		}
+	}
+
+	if err := d.Set(h.Key(), al); err != nil {
+		log.Printf("[WARN] Error setting ACLs for (%s): %s", d.Id(), err)
+	}
+
+	return nil
+}
+
+func (h *ACLServiceAttributeHandler) Update(context.Context, *schema.ResourceData, map[string]interface{}, map[string]interface{}, int, *gofastly.Client) error {
+	return nil
+}
+
+func (h *ACLServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface{}, latestVersion int, conn *gofastly.Client) error {
+	if !resource["force_destroy"].(bool) {
+		mayDelete, err := isACLEmpty(d.Id(), resource["acl_id"].(string), conn)
+		if err != nil {
+			return err
+		}
+
+		if !mayDelete {
+			return fmt.Errorf("Cannot delete ACL (%s), list is not empty. Either delete the entries first, or set force_destroy to true and apply it before making this change.", resource["acl_id"].(string))
+		}
+	}
+
+	opts := gofastly.DeleteACLInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: latestVersion,
+		Name:           resource["name"].(string),
+	}
+
+	log.Printf("[DEBUG] Fastly ACL removal opts: %#v", opts)
+	err := conn.DeleteACL(&opts)
+
+	if errRes, ok := err.(*gofastly.HTTPError); ok {
+		if errRes.StatusCode != 404 {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
 	return nil
 }
 

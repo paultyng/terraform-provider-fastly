@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -13,185 +14,17 @@ type GCSLoggingServiceAttributeHandler struct {
 }
 
 func NewServiceGCSLogging(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &GCSLoggingServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&GCSLoggingServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "gcslogging",
 			serviceMetadata: sa,
 		},
-	}
-}
-
-func (h *GCSLoggingServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	os, ns := d.GetChange(h.GetKey())
-	if os == nil {
-		os = new(schema.Set)
-	}
-	if ns == nil {
-		ns = new(schema.Set)
-	}
-
-	oldSet := os.(*schema.Set)
-	newSet := ns.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
-		}
-		return t["name"], nil
 	})
-
-	diffResult, err := setDiff.Diff(oldSet, newSet)
-	if err != nil {
-		return err
-	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-		opts := gofastly.DeleteGCSInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		log.Printf("[DEBUG] Fastly gcslogging removal opts: %#v", opts)
-		err := conn.DeleteGCS(&opts)
-		if errRes, ok := err.(*gofastly.HTTPError); ok {
-			if errRes.StatusCode != 404 {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		resource := resource.(map[string]interface{})
-		var vla = h.getVCLLoggingAttributes(resource)
-		opts := gofastly.CreateGCSInput{
-			ServiceID:         d.Id(),
-			ServiceVersion:    latestVersion,
-			Name:              resource["name"].(string),
-			User:              resource["email"].(string),
-			Bucket:            resource["bucket_name"].(string),
-			SecretKey:         resource["secret_key"].(string),
-			Path:              resource["path"].(string),
-			Period:            uint(resource["period"].(int)),
-			GzipLevel:         uint8(resource["gzip_level"].(int)),
-			TimestampFormat:   resource["timestamp_format"].(string),
-			MessageType:       resource["message_type"].(string),
-			CompressionCodec:  resource["compression_codec"].(string),
-			Format:            vla.format,
-			ResponseCondition: vla.responseCondition,
-			Placement:         vla.placement,
-		}
-
-		log.Printf("[DEBUG] Create GCS Opts: %#v", opts)
-		_, err := conn.CreateGCS(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources
-	//
-	// NOTE: although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	for _, resource := range diffResult.Modified {
-		resource := resource.(map[string]interface{})
-
-		opts := gofastly.UpdateGCSInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		// only attempt to update attributes that have changed
-		modified := setDiff.Filter(resource, oldSet)
-
-		// NOTE: where we transition between interface{} we lose the ability to
-		// infer the underlying type being either a uint vs an int. This
-		// materializes as a panic (yay) and so it's only at runtime we discover
-		// this and so we've updated the below code to convert the type asserted
-		// int into a uint before passing the value to gofastly.Uint().
-		if v, ok := modified["bucket_name"]; ok {
-			opts.Bucket = gofastly.String(v.(string))
-		}
-		if v, ok := modified["user"]; ok {
-			opts.User = gofastly.String(v.(string))
-		}
-		if v, ok := modified["secret_key"]; ok {
-			opts.SecretKey = gofastly.String(v.(string))
-		}
-		if v, ok := modified["path"]; ok {
-			opts.Path = gofastly.String(v.(string))
-		}
-		if v, ok := modified["period"]; ok {
-			opts.Period = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["format_version"]; ok {
-			opts.FormatVersion = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["compression_codec"]; ok {
-			opts.CompressionCodec = gofastly.String(v.(string))
-		}
-		if v, ok := modified["gzip_level"]; ok {
-			opts.GzipLevel = gofastly.Uint8(uint8(v.(int)))
-		}
-		if v, ok := modified["format"]; ok {
-			opts.Format = gofastly.String(v.(string))
-		}
-		if v, ok := modified["message_type"]; ok {
-			opts.MessageType = gofastly.String(v.(string))
-		}
-		if v, ok := modified["response_condition"]; ok {
-			opts.ResponseCondition = gofastly.String(v.(string))
-		}
-		if v, ok := modified["timestamp_format"]; ok {
-			opts.TimestampFormat = gofastly.String(v.(string))
-		}
-		if v, ok := modified["placement"]; ok {
-			opts.Placement = gofastly.String(v.(string))
-		}
-
-		log.Printf("[DEBUG] Update GCS Opts: %#v", opts)
-		_, err := conn.UpdateGCS(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-func (h *GCSLoggingServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
-	log.Printf("[DEBUG] Refreshing GCS for (%s)", d.Id())
-	GCSList, err := conn.ListGCSs(&gofastly.ListGCSsInput{
-		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
-	})
+func (h *GCSLoggingServiceAttributeHandler) Key() string { return h.key }
 
-	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up GCS for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
-	}
-
-	gcsl := flattenGCS(GCSList)
-
-	for _, element := range gcsl {
-		element = h.pruneVCLLoggingAttributes(element)
-	}
-
-	if err := d.Set(h.GetKey(), gcsl); err != nil {
-		log.Printf("[WARN] Error setting gcs for (%s): %s", d.Id(), err)
-	}
-
-	return nil
-}
-
-func (h *GCSLoggingServiceAttributeHandler) Register(s *schema.Resource) error {
+func (h *GCSLoggingServiceAttributeHandler) GetSchema() *schema.Schema {
 	var blockAttributes = map[string]*schema.Schema{
 		// Required fields
 		"name": {
@@ -277,12 +110,145 @@ func (h *GCSLoggingServiceAttributeHandler) Register(s *schema.Resource) error {
 		}
 	}
 
-	s.Schema[h.GetKey()] = &schema.Schema{
+	return &schema.Schema{
 		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
 			Schema: blockAttributes,
 		},
+	}
+}
+
+func (h *GCSLoggingServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	var vla = h.getVCLLoggingAttributes(resource)
+	opts := gofastly.CreateGCSInput{
+		ServiceID:         d.Id(),
+		ServiceVersion:    serviceVersion,
+		Name:              resource["name"].(string),
+		User:              resource["email"].(string),
+		Bucket:            resource["bucket_name"].(string),
+		SecretKey:         resource["secret_key"].(string),
+		Path:              resource["path"].(string),
+		Period:            uint(resource["period"].(int)),
+		GzipLevel:         uint8(resource["gzip_level"].(int)),
+		TimestampFormat:   resource["timestamp_format"].(string),
+		MessageType:       resource["message_type"].(string),
+		CompressionCodec:  resource["compression_codec"].(string),
+		Format:            vla.format,
+		ResponseCondition: vla.responseCondition,
+		Placement:         vla.placement,
+	}
+
+	log.Printf("[DEBUG] Create GCS Opts: %#v", opts)
+	_, err := conn.CreateGCS(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *GCSLoggingServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, serviceVersion int, conn *gofastly.Client) error {
+	log.Printf("[DEBUG] Refreshing GCS for (%s)", d.Id())
+	GCSList, err := conn.ListGCSs(&gofastly.ListGCSsInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+	})
+
+	if err != nil {
+		return fmt.Errorf("[ERR] Error looking up GCS for (%s), version (%v): %s", d.Id(), serviceVersion, err)
+	}
+
+	gcsl := flattenGCS(GCSList)
+
+	for _, element := range gcsl {
+		element = h.pruneVCLLoggingAttributes(element)
+	}
+
+	if err := d.Set(h.GetKey(), gcsl); err != nil {
+		log.Printf("[WARN] Error setting gcs for (%s): %s", d.Id(), err)
+	}
+
+	return nil
+}
+
+func (h *GCSLoggingServiceAttributeHandler) Update(_ context.Context, d *schema.ResourceData, resource, modified map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.UpdateGCSInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	// NOTE: where we transition between interface{} we lose the ability to
+	// infer the underlying type being either a uint vs an int. This
+	// materializes as a panic (yay) and so it's only at runtime we discover
+	// this and so we've updated the below code to convert the type asserted
+	// int into a uint before passing the value to gofastly.Uint().
+	if v, ok := modified["bucket_name"]; ok {
+		opts.Bucket = gofastly.String(v.(string))
+	}
+	if v, ok := modified["user"]; ok {
+		opts.User = gofastly.String(v.(string))
+	}
+	if v, ok := modified["secret_key"]; ok {
+		opts.SecretKey = gofastly.String(v.(string))
+	}
+	if v, ok := modified["path"]; ok {
+		opts.Path = gofastly.String(v.(string))
+	}
+	if v, ok := modified["period"]; ok {
+		opts.Period = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["format_version"]; ok {
+		opts.FormatVersion = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["compression_codec"]; ok {
+		opts.CompressionCodec = gofastly.String(v.(string))
+	}
+	if v, ok := modified["gzip_level"]; ok {
+		opts.GzipLevel = gofastly.Uint8(uint8(v.(int)))
+	}
+	if v, ok := modified["format"]; ok {
+		opts.Format = gofastly.String(v.(string))
+	}
+	if v, ok := modified["message_type"]; ok {
+		opts.MessageType = gofastly.String(v.(string))
+	}
+	if v, ok := modified["response_condition"]; ok {
+		opts.ResponseCondition = gofastly.String(v.(string))
+	}
+	if v, ok := modified["timestamp_format"]; ok {
+		opts.TimestampFormat = gofastly.String(v.(string))
+	}
+	if v, ok := modified["placement"]; ok {
+		opts.Placement = gofastly.String(v.(string))
+	}
+
+	log.Printf("[DEBUG] Update GCS Opts: %#v", opts)
+	_, err := conn.UpdateGCS(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *GCSLoggingServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.DeleteGCSInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	log.Printf("[DEBUG] Fastly gcslogging removal opts: %#v", opts)
+	err := conn.DeleteGCS(&opts)
+	if errRes, ok := err.(*gofastly.HTTPError); ok {
+		if errRes.StatusCode != 404 {
+			return err
+		}
+	} else if err != nil {
+		return err
 	}
 	return nil
 }

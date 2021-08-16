@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -14,152 +15,18 @@ type ConditionServiceAttributeHandler struct {
 }
 
 func NewServiceCondition(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &ConditionServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&ConditionServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "condition",
 			serviceMetadata: sa,
 		},
-	}
-}
-
-func (h *ConditionServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	// Note: we don't utilize the PUT endpoint to update these objects, we simply
-	// destroy any that have changed, and create new ones with the updated
-	// values. This is how Terraform works with nested sub resources, we only
-	// get the full diff not a partial set item diff. Because this is done
-	// on a new version of the Fastly Service configuration, this is considered safe
-
-	oc, nc := d.GetChange(h.GetKey())
-	if oc == nil {
-		oc = new(schema.Set)
-	}
-	if nc == nil {
-		nc = new(schema.Set)
-	}
-
-	oldSet := oc.(*schema.Set)
-	newSet := nc.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
-		}
-		return t["name"], nil
 	})
-
-	diffResult, err := setDiff.Diff(oldSet, newSet)
-	if err != nil {
-		return err
-	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-		opts := gofastly.DeleteConditionInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		log.Printf("[DEBUG] Fastly Conditions Removal opts: %#v", opts)
-		err := conn.DeleteCondition(&opts)
-		if errRes, ok := err.(*gofastly.HTTPError); ok {
-			if errRes.StatusCode != 404 {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		resource := resource.(map[string]interface{})
-		opts := gofastly.CreateConditionInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-			Type:           resource["type"].(string),
-			// need to trim leading/tailing spaces, incase the config has HEREDOC
-			// formatting and contains a trailing new line
-			Statement: strings.TrimSpace(resource["statement"].(string)),
-			Priority:  resource["priority"].(int),
-		}
-
-		log.Printf("[DEBUG] Create Conditions Opts: %#v", opts)
-		_, err := conn.CreateCondition(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources
-	//
-	// NOTE: although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	for _, resource := range diffResult.Modified {
-		resource := resource.(map[string]interface{})
-
-		opts := gofastly.UpdateConditionInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		// only attempt to update attributes that have changed
-		modified := setDiff.Filter(resource, oldSet)
-
-		// NOTE: where we transition between interface{} we lose the ability to
-		// infer the underlying type being either a uint vs an int. This
-		// materializes as a panic (yay) and so it's only at runtime we discover
-		// this and so we've updated the below code to convert the type asserted
-		// int into a uint before passing the value to gofastly.Uint().
-		if v, ok := modified["comment"]; ok {
-			opts.Comment = gofastly.String(v.(string))
-		}
-		if v, ok := modified["statement"]; ok {
-			opts.Statement = gofastly.String(v.(string))
-		}
-		if v, ok := modified["type"]; ok {
-			opts.Type = gofastly.String(v.(string))
-		}
-		if v, ok := modified["priority"]; ok {
-			opts.Priority = gofastly.Int(v.(int))
-		}
-
-		log.Printf("[DEBUG] Update Condition Opts: %#v", opts)
-		_, err := conn.UpdateCondition(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-func (h *ConditionServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
-	log.Printf("[DEBUG] Refreshing Conditions for (%s)", d.Id())
-	conditionList, err := conn.ListConditions(&gofastly.ListConditionsInput{
-		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
-	})
+func (h *ConditionServiceAttributeHandler) Key() string { return h.key }
 
-	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up Conditions for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
-	}
-
-	cl := flattenConditions(conditionList)
-
-	if err := d.Set(h.GetKey(), cl); err != nil {
-		log.Printf("[WARN] Error setting Conditions for (%s): %s", d.Id(), err)
-	}
-	return nil
-}
-
-func (h *ConditionServiceAttributeHandler) Register(s *schema.Resource) error {
-	s.Schema[h.GetKey()] = &schema.Schema{
+func (h *ConditionServiceAttributeHandler) GetSchema() *schema.Schema {
+	return &schema.Schema{
 		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
@@ -188,6 +55,99 @@ func (h *ConditionServiceAttributeHandler) Register(s *schema.Resource) error {
 				},
 			},
 		},
+	}
+}
+
+func (h *ConditionServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.CreateConditionInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+		Type:           resource["type"].(string),
+		// need to trim leading/tailing spaces, incase the config has HEREDOC
+		// formatting and contains a trailing new line
+		Statement: strings.TrimSpace(resource["statement"].(string)),
+		Priority:  resource["priority"].(int),
+	}
+
+	log.Printf("[DEBUG] Create Conditions Opts: %#v", opts)
+	_, err := conn.CreateCondition(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *ConditionServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, serviceVersion int, conn *gofastly.Client) error {
+	log.Printf("[DEBUG] Refreshing Conditions for (%s)", d.Id())
+	conditionList, err := conn.ListConditions(&gofastly.ListConditionsInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+	})
+
+	if err != nil {
+		return fmt.Errorf("[ERR] Error looking up Conditions for (%s), version (%v): %s", d.Id(), serviceVersion, err)
+	}
+
+	cl := flattenConditions(conditionList)
+
+	if err := d.Set(h.GetKey(), cl); err != nil {
+		log.Printf("[WARN] Error setting Conditions for (%s): %s", d.Id(), err)
+	}
+	return nil
+}
+
+func (h *ConditionServiceAttributeHandler) Update(_ context.Context, d *schema.ResourceData, resource, modified map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.UpdateConditionInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	// NOTE: where we transition between interface{} we lose the ability to
+	// infer the underlying type being either a uint vs an int. This
+	// materializes as a panic (yay) and so it's only at runtime we discover
+	// this and so we've updated the below code to convert the type asserted
+	// int into a uint before passing the value to gofastly.Uint().
+	if v, ok := modified["comment"]; ok {
+		opts.Comment = gofastly.String(v.(string))
+	}
+	if v, ok := modified["statement"]; ok {
+		opts.Statement = gofastly.String(v.(string))
+	}
+	if v, ok := modified["type"]; ok {
+		opts.Type = gofastly.String(v.(string))
+	}
+	if v, ok := modified["priority"]; ok {
+		opts.Priority = gofastly.Int(v.(int))
+	}
+
+	log.Printf("[DEBUG] Update Condition Opts: %#v", opts)
+	_, err := conn.UpdateCondition(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *ConditionServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.DeleteConditionInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	log.Printf("[DEBUG] Fastly Conditions Removal opts: %#v", opts)
+	err := conn.DeleteCondition(&opts)
+	if errRes, ok := err.(*gofastly.HTTPError); ok {
+		if errRes.StatusCode != 404 {
+			return err
+		}
+	} else if err != nil {
+		return err
 	}
 	return nil
 }

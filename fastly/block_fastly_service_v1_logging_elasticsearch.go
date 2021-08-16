@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -13,168 +14,17 @@ type ElasticSearchServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingElasticSearch(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &ElasticSearchServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&ElasticSearchServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_elasticsearch",
 			serviceMetadata: sa,
 		},
-	}
-}
-
-func (h *ElasticSearchServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	serviceID := d.Id()
-	oe, ne := d.GetChange(h.GetKey())
-
-	if oe == nil {
-		oe = new(schema.Set)
-	}
-	if ne == nil {
-		ne = new(schema.Set)
-	}
-
-	oldSet := oe.(*schema.Set)
-	newSet := ne.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
-		}
-		return t["name"], nil
 	})
-
-	diffResult, err := setDiff.Diff(oldSet, newSet)
-	if err != nil {
-		return err
-	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-		opts := h.buildDelete(resource, serviceID, latestVersion)
-
-		log.Printf("[DEBUG] Fastly Elasticsearch logging endpoint removal opts: %#v", opts)
-
-		if err := deleteElasticsearch(conn, opts); err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		resource := resource.(map[string]interface{})
-		opts := h.buildCreate(resource, serviceID, latestVersion)
-
-		log.Printf("[DEBUG] Fastly Elasticsearch logging addition opts: %#v", opts)
-
-		if err := createElasticsearch(conn, opts); err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources
-	//
-	// NOTE: although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	for _, resource := range diffResult.Modified {
-		resource := resource.(map[string]interface{})
-
-		opts := gofastly.UpdateElasticsearchInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		// only attempt to update attributes that have changed
-		modified := setDiff.Filter(resource, oldSet)
-
-		// NOTE: where we transition between interface{} we lose the ability to
-		// infer the underlying type being either a uint vs an int. This
-		// materializes as a panic (yay) and so it's only at runtime we discover
-		// this and so we've updated the below code to convert the type asserted
-		// int into a uint before passing the value to gofastly.Uint().
-		if v, ok := modified["response_condition"]; ok {
-			opts.ResponseCondition = gofastly.String(v.(string))
-		}
-		if v, ok := modified["format"]; ok {
-			opts.Format = gofastly.String(v.(string))
-		}
-		if v, ok := modified["index"]; ok {
-			opts.Index = gofastly.String(v.(string))
-		}
-		if v, ok := modified["url"]; ok {
-			opts.URL = gofastly.String(v.(string))
-		}
-		if v, ok := modified["pipeline"]; ok {
-			opts.Pipeline = gofastly.String(v.(string))
-		}
-		if v, ok := modified["user"]; ok {
-			opts.User = gofastly.String(v.(string))
-		}
-		if v, ok := modified["password"]; ok {
-			opts.Password = gofastly.String(v.(string))
-		}
-		if v, ok := modified["request_max_entries"]; ok {
-			opts.RequestMaxEntries = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["request_max_bytes"]; ok {
-			opts.RequestMaxBytes = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["placement"]; ok {
-			opts.Placement = gofastly.String(v.(string))
-		}
-		if v, ok := modified["tls_ca_cert"]; ok {
-			opts.TLSCACert = gofastly.String(v.(string))
-		}
-		if v, ok := modified["tls_client_cert"]; ok {
-			opts.TLSClientCert = gofastly.String(v.(string))
-		}
-		if v, ok := modified["tls_client_key"]; ok {
-			opts.TLSClientKey = gofastly.String(v.(string))
-		}
-		if v, ok := modified["tls_hostname"]; ok {
-			opts.TLSHostname = gofastly.String(v.(string))
-		}
-		if v, ok := modified["format_version"]; ok {
-			opts.FormatVersion = gofastly.Uint(uint(v.(int)))
-		}
-
-		log.Printf("[DEBUG] Update Elasticsearch Opts: %#v", opts)
-		_, err := conn.UpdateElasticsearch(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-func (h *ElasticSearchServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
-	// Refresh Elasticsearch.
-	log.Printf("[DEBUG] Refreshing Elasticsearch logging endpoints for (%s)", d.Id())
-	elasticsearchList, err := conn.ListElasticsearch(&gofastly.ListElasticsearchInput{
-		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
-	})
+func (h *ElasticSearchServiceAttributeHandler) Key() string { return h.key }
 
-	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up Elasticsearch logging endpoints for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
-	}
-
-	ell := flattenElasticsearch(elasticsearchList)
-
-	for _, element := range ell {
-		element = h.pruneVCLLoggingAttributes(element)
-	}
-
-	if err := d.Set(h.GetKey(), ell); err != nil {
-		log.Printf("[WARN] Error setting Elasticsearch logging endpoints for (%s): %s", d.Id(), err)
-	}
-	return nil
-}
-
-func (h *ElasticSearchServiceAttributeHandler) Register(s *schema.Resource) error {
+func (h *ElasticSearchServiceAttributeHandler) GetSchema() *schema.Schema {
 	var blockAttributes = map[string]*schema.Schema{
 		// Required fields
 		"name": {
@@ -285,12 +135,126 @@ func (h *ElasticSearchServiceAttributeHandler) Register(s *schema.Resource) erro
 		}
 	}
 
-	s.Schema[h.GetKey()] = &schema.Schema{
+	return &schema.Schema{
 		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
 			Schema: blockAttributes,
 		},
+	}
+}
+
+func (h *ElasticSearchServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := h.buildCreate(resource, d.Id(), serviceVersion)
+
+	log.Printf("[DEBUG] Fastly Elasticsearch logging addition opts: %#v", opts)
+
+	if err := createElasticsearch(conn, opts); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *ElasticSearchServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, serviceVersion int, conn *gofastly.Client) error {
+	// Refresh Elasticsearch.
+	log.Printf("[DEBUG] Refreshing Elasticsearch logging endpoints for (%s)", d.Id())
+	elasticsearchList, err := conn.ListElasticsearch(&gofastly.ListElasticsearchInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+	})
+
+	if err != nil {
+		return fmt.Errorf("[ERR] Error looking up Elasticsearch logging endpoints for (%s), version (%v): %s", d.Id(), serviceVersion, err)
+	}
+
+	ell := flattenElasticsearch(elasticsearchList)
+
+	for _, element := range ell {
+		element = h.pruneVCLLoggingAttributes(element)
+	}
+
+	if err := d.Set(h.GetKey(), ell); err != nil {
+		log.Printf("[WARN] Error setting Elasticsearch logging endpoints for (%s): %s", d.Id(), err)
+	}
+	return nil
+}
+
+func (h *ElasticSearchServiceAttributeHandler) Update(_ context.Context, d *schema.ResourceData, resource, modified map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.UpdateElasticsearchInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	// NOTE: where we transition between interface{} we lose the ability to
+	// infer the underlying type being either a uint vs an int. This
+	// materializes as a panic (yay) and so it's only at runtime we discover
+	// this and so we've updated the below code to convert the type asserted
+	// int into a uint before passing the value to gofastly.Uint().
+	if v, ok := modified["response_condition"]; ok {
+		opts.ResponseCondition = gofastly.String(v.(string))
+	}
+	if v, ok := modified["format"]; ok {
+		opts.Format = gofastly.String(v.(string))
+	}
+	if v, ok := modified["index"]; ok {
+		opts.Index = gofastly.String(v.(string))
+	}
+	if v, ok := modified["url"]; ok {
+		opts.URL = gofastly.String(v.(string))
+	}
+	if v, ok := modified["pipeline"]; ok {
+		opts.Pipeline = gofastly.String(v.(string))
+	}
+	if v, ok := modified["user"]; ok {
+		opts.User = gofastly.String(v.(string))
+	}
+	if v, ok := modified["password"]; ok {
+		opts.Password = gofastly.String(v.(string))
+	}
+	if v, ok := modified["request_max_entries"]; ok {
+		opts.RequestMaxEntries = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["request_max_bytes"]; ok {
+		opts.RequestMaxBytes = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["placement"]; ok {
+		opts.Placement = gofastly.String(v.(string))
+	}
+	if v, ok := modified["tls_ca_cert"]; ok {
+		opts.TLSCACert = gofastly.String(v.(string))
+	}
+	if v, ok := modified["tls_client_cert"]; ok {
+		opts.TLSClientCert = gofastly.String(v.(string))
+	}
+	if v, ok := modified["tls_client_key"]; ok {
+		opts.TLSClientKey = gofastly.String(v.(string))
+	}
+	if v, ok := modified["tls_hostname"]; ok {
+		opts.TLSHostname = gofastly.String(v.(string))
+	}
+	if v, ok := modified["format_version"]; ok {
+		opts.FormatVersion = gofastly.Uint(uint(v.(int)))
+	}
+
+	log.Printf("[DEBUG] Update Elasticsearch Opts: %#v", opts)
+	_, err := conn.UpdateElasticsearch(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *ElasticSearchServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := h.buildDelete(resource, d.Id(), serviceVersion)
+
+	log.Printf("[DEBUG] Fastly Elasticsearch logging endpoint removal opts: %#v", opts)
+
+	if err := deleteElasticsearch(conn, opts); err != nil {
+		return err
 	}
 	return nil
 }

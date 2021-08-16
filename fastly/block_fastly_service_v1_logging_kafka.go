@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -13,15 +14,17 @@ type KafkaServiceAttributeHandler struct {
 }
 
 func NewServiceLoggingKafka(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &KafkaServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&KafkaServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "logging_kafka",
 			serviceMetadata: sa,
 		},
-	}
+	})
 }
 
-func (h *KafkaServiceAttributeHandler) Register(s *schema.Resource) error {
+func (h *KafkaServiceAttributeHandler) Key() string { return h.key }
+
+func (h *KafkaServiceAttributeHandler) GetSchema() *schema.Schema {
 	var blockAttributes = map[string]*schema.Schema{
 		// Required fields
 		"name": {
@@ -149,164 +152,37 @@ func (h *KafkaServiceAttributeHandler) Register(s *schema.Resource) error {
 		}
 	}
 
-	s.Schema[h.GetKey()] = &schema.Schema{
+	return &schema.Schema{
 		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
 			Schema: blockAttributes,
 		},
 	}
-	return nil
 }
 
-func (h *KafkaServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	serviceID := d.Id()
-	oldLogCfg, newLogCfg := d.GetChange(h.GetKey())
+func (h *KafkaServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := h.buildCreate(resource, d.Id(), serviceVersion)
 
-	if oldLogCfg == nil {
-		oldLogCfg = new(schema.Set)
-	}
-	if newLogCfg == nil {
-		newLogCfg = new(schema.Set)
-	}
+	log.Printf("[DEBUG] Fastly Kafka logging addition opts: %#v", opts)
 
-	oldSet := oldLogCfg.(*schema.Set)
-	newSet := newLogCfg.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
-		}
-		return t["name"], nil
-	})
-
-	diffResult, err := setDiff.Diff(oldSet, newSet)
-	if err != nil {
+	if err := createKafka(conn, opts); err != nil {
 		return err
 	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-		opts := h.buildDelete(resource, serviceID, latestVersion)
-
-		log.Printf("[DEBUG] Fastly Kafka logging endpoint removal opts: %#v", opts)
-
-		if err := deleteKafka(conn, opts); err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		resource := resource.(map[string]interface{})
-		opts := h.buildCreate(resource, serviceID, latestVersion)
-
-		log.Printf("[DEBUG] Fastly Kafka logging addition opts: %#v", opts)
-
-		if err := createKafka(conn, opts); err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources
-	//
-	// NOTE: although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	for _, resource := range diffResult.Modified {
-		resource := resource.(map[string]interface{})
-
-		opts := gofastly.UpdateKafkaInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		// only attempt to update attributes that have changed
-		modified := setDiff.Filter(resource, oldSet)
-
-		// NOTE: where we transition between interface{} we lose the ability to
-		// infer the underlying type being either a uint vs an int. This
-		// materializes as a panic (yay) and so it's only at runtime we discover
-		// this and so we've updated the below code to convert the type asserted
-		// int into a uint before passing the value to gofastly.Uint().
-		if v, ok := modified["brokers"]; ok {
-			opts.Brokers = gofastly.String(v.(string))
-		}
-		if v, ok := modified["topic"]; ok {
-			opts.Topic = gofastly.String(v.(string))
-		}
-		if v, ok := modified["required_acks"]; ok {
-			opts.RequiredACKs = gofastly.String(v.(string))
-		}
-		if v, ok := modified["use_tls"]; ok {
-			opts.UseTLS = gofastly.CBool(v.(bool))
-		}
-		if v, ok := modified["compression_codec"]; ok {
-			opts.CompressionCodec = gofastly.String(v.(string))
-		}
-		if v, ok := modified["format"]; ok {
-			opts.Format = gofastly.String(v.(string))
-		}
-		if v, ok := modified["format_version"]; ok {
-			opts.FormatVersion = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["response_condition"]; ok {
-			opts.ResponseCondition = gofastly.String(v.(string))
-		}
-		if v, ok := modified["placement"]; ok {
-			opts.Placement = gofastly.String(v.(string))
-		}
-		if v, ok := modified["tls_ca_cert"]; ok {
-			opts.TLSCACert = gofastly.String(v.(string))
-		}
-		if v, ok := modified["tls_hostname"]; ok {
-			opts.TLSHostname = gofastly.String(v.(string))
-		}
-		if v, ok := modified["tls_client_cert"]; ok {
-			opts.TLSClientCert = gofastly.String(v.(string))
-		}
-		if v, ok := modified["tls_client_key"]; ok {
-			opts.TLSClientKey = gofastly.String(v.(string))
-		}
-		if v, ok := modified["parse_log_keyvals"]; ok {
-			opts.ParseLogKeyvals = gofastly.CBool(v.(bool))
-		}
-		if v, ok := modified["request_max_bytes"]; ok {
-			opts.RequestMaxBytes = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["auth_method"]; ok {
-			opts.AuthMethod = gofastly.String(v.(string))
-		}
-		if v, ok := modified["user"]; ok {
-			opts.User = gofastly.String(v.(string))
-		}
-		if v, ok := modified["password"]; ok {
-			opts.Password = gofastly.String(v.(string))
-		}
-
-		log.Printf("[DEBUG] Update Kafka Opts: %#v", opts)
-		_, err := conn.UpdateKafka(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
-func (h *KafkaServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *KafkaServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, serviceVersion int, conn *gofastly.Client) error {
 	// refresh Kafka
 	log.Printf("[DEBUG] Refreshing Kafka logging endpoints for (%s)", d.Id())
 	kafkaList, err := conn.ListKafkas(&gofastly.ListKafkasInput{
 		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
+		ServiceVersion: serviceVersion,
 	})
 
 	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up Kafka logging endpoints for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
+		return fmt.Errorf("[ERR] Error looking up Kafka logging endpoints for (%s), version (%v): %s", d.Id(), serviceVersion, err)
 	}
 
 	kafkaLogList := flattenKafka(kafkaList)
@@ -319,6 +195,94 @@ func (h *KafkaServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.
 		log.Printf("[WARN] Error setting Kafka logging endpoints for (%s): %s", d.Id(), err)
 	}
 
+	return nil
+}
+
+func (h *KafkaServiceAttributeHandler) Update(_ context.Context, d *schema.ResourceData, resource, modified map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.UpdateKafkaInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	// NOTE: where we transition between interface{} we lose the ability to
+	// infer the underlying type being either a uint vs an int. This
+	// materializes as a panic (yay) and so it's only at runtime we discover
+	// this and so we've updated the below code to convert the type asserted
+	// int into a uint before passing the value to gofastly.Uint().
+	if v, ok := modified["brokers"]; ok {
+		opts.Brokers = gofastly.String(v.(string))
+	}
+	if v, ok := modified["topic"]; ok {
+		opts.Topic = gofastly.String(v.(string))
+	}
+	if v, ok := modified["required_acks"]; ok {
+		opts.RequiredACKs = gofastly.String(v.(string))
+	}
+	if v, ok := modified["use_tls"]; ok {
+		opts.UseTLS = gofastly.CBool(v.(bool))
+	}
+	if v, ok := modified["compression_codec"]; ok {
+		opts.CompressionCodec = gofastly.String(v.(string))
+	}
+	if v, ok := modified["format"]; ok {
+		opts.Format = gofastly.String(v.(string))
+	}
+	if v, ok := modified["format_version"]; ok {
+		opts.FormatVersion = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["response_condition"]; ok {
+		opts.ResponseCondition = gofastly.String(v.(string))
+	}
+	if v, ok := modified["placement"]; ok {
+		opts.Placement = gofastly.String(v.(string))
+	}
+	if v, ok := modified["tls_ca_cert"]; ok {
+		opts.TLSCACert = gofastly.String(v.(string))
+	}
+	if v, ok := modified["tls_hostname"]; ok {
+		opts.TLSHostname = gofastly.String(v.(string))
+	}
+	if v, ok := modified["tls_client_cert"]; ok {
+		opts.TLSClientCert = gofastly.String(v.(string))
+	}
+	if v, ok := modified["tls_client_key"]; ok {
+		opts.TLSClientKey = gofastly.String(v.(string))
+	}
+	if v, ok := modified["parse_log_keyvals"]; ok {
+		opts.ParseLogKeyvals = gofastly.CBool(v.(bool))
+	}
+	if v, ok := modified["request_max_bytes"]; ok {
+		opts.RequestMaxBytes = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["auth_method"]; ok {
+		opts.AuthMethod = gofastly.String(v.(string))
+	}
+	if v, ok := modified["user"]; ok {
+		opts.User = gofastly.String(v.(string))
+	}
+	if v, ok := modified["password"]; ok {
+		opts.Password = gofastly.String(v.(string))
+	}
+
+	log.Printf("[DEBUG] Update Kafka Opts: %#v", opts)
+	_, err := conn.UpdateKafka(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *KafkaServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := h.buildDelete(resource, d.Id(), serviceVersion)
+
+	log.Printf("[DEBUG] Fastly Kafka logging endpoint removal opts: %#v", opts)
+
+	if err := deleteKafka(conn, opts); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -13,174 +14,18 @@ type HealthCheckServiceAttributeHandler struct {
 }
 
 func NewServiceHealthCheck(sa ServiceMetadata) ServiceAttributeDefinition {
-	return &HealthCheckServiceAttributeHandler{
+	return ToServiceAttributeDefinition(&HealthCheckServiceAttributeHandler{
 		&DefaultServiceAttributeHandler{
 			key:             "healthcheck",
 			serviceMetadata: sa,
 		},
-	}
-}
-
-func (h *HealthCheckServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
-	oh, nh := d.GetChange(h.GetKey())
-	if oh == nil {
-		oh = new(schema.Set)
-	}
-	if nh == nil {
-		nh = new(schema.Set)
-	}
-
-	oldSet := oh.(*schema.Set)
-	newSet := nh.(*schema.Set)
-
-	setDiff := NewSetDiff(func(resource interface{}) (interface{}, error) {
-		t, ok := resource.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("resource failed to be type asserted: %+v", resource)
-		}
-		return t["name"], nil
 	})
-
-	diffResult, err := setDiff.Diff(oldSet, newSet)
-	if err != nil {
-		return err
-	}
-
-	// DELETE removed resources
-	for _, resource := range diffResult.Deleted {
-		resource := resource.(map[string]interface{})
-		opts := gofastly.DeleteHealthCheckInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		log.Printf("[DEBUG] Fastly Healthcheck removal opts: %#v", opts)
-		err := conn.DeleteHealthCheck(&opts)
-		if errRes, ok := err.(*gofastly.HTTPError); ok {
-			if errRes.StatusCode != 404 {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-	}
-
-	// CREATE new resources
-	for _, resource := range diffResult.Added {
-		resource := resource.(map[string]interface{})
-
-		opts := gofastly.CreateHealthCheckInput{
-			ServiceID:        d.Id(),
-			ServiceVersion:   latestVersion,
-			Name:             resource["name"].(string),
-			Host:             resource["host"].(string),
-			Path:             resource["path"].(string),
-			CheckInterval:    uint(resource["check_interval"].(int)),
-			ExpectedResponse: uint(resource["expected_response"].(int)),
-			HTTPVersion:      resource["http_version"].(string),
-			Initial:          uint(resource["initial"].(int)),
-			Method:           resource["method"].(string),
-			Threshold:        uint(resource["threshold"].(int)),
-			Timeout:          uint(resource["timeout"].(int)),
-			Window:           uint(resource["window"].(int)),
-		}
-
-		log.Printf("[DEBUG] Create Healthcheck Opts: %#v", opts)
-		_, err := conn.CreateHealthCheck(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	// UPDATE modified resources
-	//
-	// NOTE: although the go-fastly API client enables updating of a resource by
-	// its 'name' attribute, this isn't possible within terraform due to
-	// constraints in the data model/schema of the resources not having a uid.
-	for _, resource := range diffResult.Modified {
-		resource := resource.(map[string]interface{})
-
-		opts := gofastly.UpdateHealthCheckInput{
-			ServiceID:      d.Id(),
-			ServiceVersion: latestVersion,
-			Name:           resource["name"].(string),
-		}
-
-		// only attempt to update attributes that have changed
-		modified := setDiff.Filter(resource, oldSet)
-
-		// NOTE: where we transition between interface{} we lose the ability to
-		// infer the underlying type being either a uint vs an int. This
-		// materializes as a panic (yay) and so it's only at runtime we discover
-		// this and so we've updated the below code to convert the type asserted
-		// int into a uint before passing the value to gofastly.Uint().
-		if v, ok := modified["comment"]; ok {
-			opts.Comment = gofastly.String(v.(string))
-		}
-		if v, ok := modified["method"]; ok {
-			opts.Method = gofastly.String(v.(string))
-		}
-		if v, ok := modified["host"]; ok {
-			opts.Host = gofastly.String(v.(string))
-		}
-		if v, ok := modified["path"]; ok {
-			opts.Path = gofastly.String(v.(string))
-		}
-		if v, ok := modified["http_version"]; ok {
-			opts.HTTPVersion = gofastly.String(v.(string))
-		}
-		if v, ok := modified["timeout"]; ok {
-			opts.Timeout = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["check_interval"]; ok {
-			opts.CheckInterval = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["expected_response"]; ok {
-			opts.ExpectedResponse = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["window"]; ok {
-			opts.Window = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["threshold"]; ok {
-			opts.Threshold = gofastly.Uint(uint(v.(int)))
-		}
-		if v, ok := modified["initial"]; ok {
-			opts.Initial = gofastly.Uint(uint(v.(int)))
-		}
-
-		log.Printf("[DEBUG] Update Healthcheck Opts: %#v", opts)
-		_, err := conn.UpdateHealthCheck(&opts)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-func (h *HealthCheckServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
-	log.Printf("[DEBUG] Refreshing Healthcheck for (%s)", d.Id())
-	healthcheckList, err := conn.ListHealthChecks(&gofastly.ListHealthChecksInput{
-		ServiceID:      d.Id(),
-		ServiceVersion: s.ActiveVersion.Number,
-	})
+func (h *HealthCheckServiceAttributeHandler) Key() string { return h.key }
 
-	if err != nil {
-		return fmt.Errorf("[ERR] Error looking up Healthcheck for (%s), version (%v): %s", d.Id(), s.ActiveVersion.Number, err)
-	}
-
-	hcl := flattenHealthchecks(healthcheckList)
-
-	if err := d.Set(h.GetKey(), hcl); err != nil {
-		log.Printf("[WARN] Error setting Healthcheck for (%s): %s", d.Id(), err)
-	}
-
-	return nil
-}
-
-func (h *HealthCheckServiceAttributeHandler) Register(s *schema.Resource) error {
-	s.Schema[h.GetKey()] = &schema.Schema{
+func (h *HealthCheckServiceAttributeHandler) GetSchema() *schema.Schema {
+	return &schema.Schema{
 		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
@@ -252,6 +97,126 @@ func (h *HealthCheckServiceAttributeHandler) Register(s *schema.Resource) error 
 				},
 			},
 		},
+	}
+}
+
+func (h *HealthCheckServiceAttributeHandler) Create(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.CreateHealthCheckInput{
+		ServiceID:        d.Id(),
+		ServiceVersion:   serviceVersion,
+		Name:             resource["name"].(string),
+		Host:             resource["host"].(string),
+		Path:             resource["path"].(string),
+		CheckInterval:    uint(resource["check_interval"].(int)),
+		ExpectedResponse: uint(resource["expected_response"].(int)),
+		HTTPVersion:      resource["http_version"].(string),
+		Initial:          uint(resource["initial"].(int)),
+		Method:           resource["method"].(string),
+		Threshold:        uint(resource["threshold"].(int)),
+		Timeout:          uint(resource["timeout"].(int)),
+		Window:           uint(resource["window"].(int)),
+	}
+
+	log.Printf("[DEBUG] Create Healthcheck Opts: %#v", opts)
+	_, err := conn.CreateHealthCheck(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *HealthCheckServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, _ map[string]interface{}, serviceVersion int, conn *gofastly.Client) error {
+	log.Printf("[DEBUG] Refreshing Healthcheck for (%s)", d.Id())
+	healthcheckList, err := conn.ListHealthChecks(&gofastly.ListHealthChecksInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+	})
+
+	if err != nil {
+		return fmt.Errorf("[ERR] Error looking up Healthcheck for (%s), version (%v): %s", d.Id(), serviceVersion, err)
+	}
+
+	hcl := flattenHealthchecks(healthcheckList)
+
+	if err := d.Set(h.GetKey(), hcl); err != nil {
+		log.Printf("[WARN] Error setting Healthcheck for (%s): %s", d.Id(), err)
+	}
+
+	return nil
+}
+
+func (h *HealthCheckServiceAttributeHandler) Update(_ context.Context, d *schema.ResourceData, resource, modified map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.UpdateHealthCheckInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	// NOTE: where we transition between interface{} we lose the ability to
+	// infer the underlying type being either a uint vs an int. This
+	// materializes as a panic (yay) and so it's only at runtime we discover
+	// this and so we've updated the below code to convert the type asserted
+	// int into a uint before passing the value to gofastly.Uint().
+	if v, ok := modified["comment"]; ok {
+		opts.Comment = gofastly.String(v.(string))
+	}
+	if v, ok := modified["method"]; ok {
+		opts.Method = gofastly.String(v.(string))
+	}
+	if v, ok := modified["host"]; ok {
+		opts.Host = gofastly.String(v.(string))
+	}
+	if v, ok := modified["path"]; ok {
+		opts.Path = gofastly.String(v.(string))
+	}
+	if v, ok := modified["http_version"]; ok {
+		opts.HTTPVersion = gofastly.String(v.(string))
+	}
+	if v, ok := modified["timeout"]; ok {
+		opts.Timeout = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["check_interval"]; ok {
+		opts.CheckInterval = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["expected_response"]; ok {
+		opts.ExpectedResponse = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["window"]; ok {
+		opts.Window = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["threshold"]; ok {
+		opts.Threshold = gofastly.Uint(uint(v.(int)))
+	}
+	if v, ok := modified["initial"]; ok {
+		opts.Initial = gofastly.Uint(uint(v.(int)))
+	}
+
+	log.Printf("[DEBUG] Update Healthcheck Opts: %#v", opts)
+	_, err := conn.UpdateHealthCheck(&opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *HealthCheckServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]interface {
+}, serviceVersion int, conn *gofastly.Client) error {
+	opts := gofastly.DeleteHealthCheckInput{
+		ServiceID:      d.Id(),
+		ServiceVersion: serviceVersion,
+		Name:           resource["name"].(string),
+	}
+
+	log.Printf("[DEBUG] Fastly Healthcheck removal opts: %#v", opts)
+	err := conn.DeleteHealthCheck(&opts)
+	if errRes, ok := err.(*gofastly.HTTPError); ok {
+		if errRes.StatusCode != 404 {
+			return err
+		}
+	} else if err != nil {
+		return err
 	}
 	return nil
 }

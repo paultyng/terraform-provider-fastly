@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -15,7 +16,7 @@ func NewServiceSettings() ServiceAttributeDefinition {
 	return &SettingsServiceAttributeHandler{}
 }
 
-func (h *SettingsServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *SettingsServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 	opts := gofastly.UpdateSettingsInput{
 		ServiceID:      d.Id(),
 		ServiceVersion: latestVersion,
@@ -31,7 +32,7 @@ func (h *SettingsServiceAttributeHandler) Process(d *schema.ResourceData, latest
 	return err
 }
 
-func (h *SettingsServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *SettingsServiceAttributeHandler) Read(_ context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	settingsOpts := gofastly.GetSettingsInput{
 		ServiceID:      d.Id(),
 		ServiceVersion: s.ActiveVersion.Number,

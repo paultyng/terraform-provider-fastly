@@ -1,6 +1,7 @@
 package fastly
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -48,7 +49,7 @@ func (h *PackageServiceAttributeHandler) Register(s *schema.Resource) error {
 	return nil
 }
 
-func (h *PackageServiceAttributeHandler) Process(d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
+func (h *PackageServiceAttributeHandler) Process(ctx context.Context, d *schema.ResourceData, latestVersion int, conn *gofastly.Client) error {
 
 	if v, ok := d.GetOk(h.GetKey()); ok {
 		// Schema guarantees one package block.
@@ -68,7 +69,7 @@ func (h *PackageServiceAttributeHandler) Process(d *schema.ResourceData, latestV
 	return nil
 }
 
-func (h *PackageServiceAttributeHandler) Read(d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
+func (h *PackageServiceAttributeHandler) Read(ctx context.Context, d *schema.ResourceData, s *gofastly.ServiceDetail, conn *gofastly.Client) error {
 	log.Printf("[DEBUG] Refreshing package for (%s)", d.Id())
 	Package, err := conn.GetPackage(&gofastly.GetPackageInput{
 		ServiceID:      d.Id(),
