@@ -270,8 +270,8 @@ func (h *BackendServiceAttributeHandler) Register(s *schema.Resource) error {
 		"auto_loadbalance": {
 			Type:        schema.TypeBool,
 			Optional:    true,
-			Default:     true,
-			Description: "Denotes if this Backend should be included in the pool of backends that requests are load balanced against. Default `true`",
+			Default:     false,
+			Description: "Denotes if this Backend should be included in the pool of backends that requests are load balanced against. Default `false`",
 		},
 		"between_bytes_timeout": {
 			Type:        schema.TypeInt,

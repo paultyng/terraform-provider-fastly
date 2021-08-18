@@ -135,7 +135,7 @@ Required:
 
 Optional:
 
-- **auto_loadbalance** (Boolean) Denotes if this Backend should be included in the pool of backends that requests are load balanced against. Default `true`
+- **auto_loadbalance** (Boolean) Denotes if this Backend should be included in the pool of backends that requests are load balanced against. Default `false`
 - **between_bytes_timeout** (Number) How long to wait between bytes in milliseconds. Default `10000`
 - **connect_timeout** (Number) How long to wait for a timeout in milliseconds. Default `1000`
 - **error_threshold** (Number) Number of errors to allow before the Backend is marked as down. Default `0`
