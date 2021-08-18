@@ -199,11 +199,11 @@ func (h *GCSLoggingServiceAttributeHandler) Register(s *schema.Resource) error {
 			Required:    true,
 			Description: "A unique name to identify this GCS endpoint. It is important to note that changing this attribute will delete and recreate the resource",
 		},
-		"email": {
+		"user": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			DefaultFunc: schema.EnvDefaultFunc("FASTLY_GCS_EMAIL", ""),
-			Description: "The email address associated with the target GCS bucket on your account. You may optionally provide this secret via an environment variable, `FASTLY_GCS_EMAIL`",
+			Description: "Your Google Cloud Platform service account email address. The `client_email` field in your service account authentication JSON. You may optionally provide this via an environment variable, `FASTLY_GCS_EMAIL`.",
 		},
 		"bucket_name": {
 			Type:        schema.TypeString,
