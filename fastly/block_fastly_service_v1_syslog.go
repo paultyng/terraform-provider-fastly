@@ -268,14 +268,14 @@ func (h *SyslogServiceAttributeHandler) Register(s *schema.Resource) error {
 		blockAttributes["format"] = &schema.Schema{
 			Type:        schema.TypeString,
 			Optional:    true,
-			Default:     "%h %l %u %t \"%r\" %>s %b",
+			Default:     `%h %l %u %t "%r" %>s %b`,
 			Description: "Apache-style string or VCL variables to use for log formatting",
 		}
 		blockAttributes["format_version"] = &schema.Schema{
 			Type:             schema.TypeInt,
 			Optional:         true,
-			Default:          1,
-			Description:      "The version of the custom logging format. Can be either 1 or 2. (Default: 1)",
+			Default:          2,
+			Description:      "The version of the custom logging format. Can be either 1 or 2. (Default: 2)",
 			ValidateDiagFunc: validateLoggingFormatVersion(),
 		}
 		blockAttributes["response_condition"] = &schema.Schema{

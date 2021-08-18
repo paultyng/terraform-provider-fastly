@@ -64,8 +64,8 @@ func TestAccFastlyServiceV1_logentries_basic(t *testing.T) {
 		Port:              uint(20000),
 		UseTLS:            true,
 		Token:             "token",
-		Format:            "%h %l %u %t %r %>s",
-		FormatVersion:     1,
+		Format:            `%h %l %u %t "%r" %>s %b`,
+		FormatVersion:     2,
 		ResponseCondition: "response_condition_test",
 	}
 
@@ -76,7 +76,7 @@ func TestAccFastlyServiceV1_logentries_basic(t *testing.T) {
 		UseTLS:            false,
 		Token:             "newtoken",
 		Format:            "%h %u %t %r %>s",
-		FormatVersion:     1,
+		FormatVersion:     2,
 		ResponseCondition: "response_condition_test",
 	}
 
@@ -122,8 +122,8 @@ func TestAccFastlyServiceV1_logentries_basic_compute(t *testing.T) {
 		Port:              uint(20000),
 		UseTLS:            true,
 		Token:             "token",
-		Format:            "%h %l %u %t %r %>s",
-		FormatVersion:     1,
+		Format:            `%h %l %u %t "%r" %>s %b`,
+		FormatVersion:     2,
 		ResponseCondition: "response_condition_test",
 	}
 
@@ -213,7 +213,7 @@ func TestAccFastlyServiceV1_logentries_formatVersion(t *testing.T) {
 		Port:              uint(20000),
 		UseTLS:            true,
 		Token:             "token",
-		Format:            "%h %l %u %t %r %>s",
+		Format:            `%h %l %u %t "%r" %>s %b`,
 		FormatVersion:     2,
 		ResponseCondition: "response_condition_test",
 	}
