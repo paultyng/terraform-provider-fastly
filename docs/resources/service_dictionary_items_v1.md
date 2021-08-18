@@ -256,3 +256,4 @@ $ terraform state rm fastly_service_dictionary_items_v1.items
 
 - **id** (String) The ID of this resource.
 - **items** (Map of String) A map representing an entry in the dictionary, (key/value)
+- **manage_items** (Boolean) Whether to reapply changes if the state of the items drifts, i.e. if items are managed externally

@@ -34,6 +34,12 @@ func resourceServiceDictionaryItemsV1() *schema.Resource {
 				ForceNew:    true,
 				Description: "The ID of the dictionary that the items belong to",
 			},
+			"manage_items": {
+				Type:        schema.TypeBool,
+				Default:     false,
+				Optional:    true,
+				Description: "Whether to reapply changes if the state of the items drifts, i.e. if items are managed externally",
+			},
 
 			"items": {
 				Type:             schema.TypeMap,
@@ -41,6 +47,9 @@ func resourceServiceDictionaryItemsV1() *schema.Resource {
 				Description:      "A map representing an entry in the dictionary, (key/value)",
 				ValidateDiagFunc: validateDictionaryItems(),
 				Elem:             schema.TypeString,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					return d.HasChange("dictionary_id") == false && d.Get("manage_items") == false
+				},
 			},
 		},
 	}

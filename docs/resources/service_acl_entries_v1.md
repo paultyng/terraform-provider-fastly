@@ -232,6 +232,7 @@ $ terraform state rm fastly_service_acl_entries_v1.entries
 
 - **entry** (Block Set, Max: 10000) ACL Entries (see [below for nested schema](#nestedblock--entry))
 - **id** (String) The ID of this resource.
+- **manage_entries** (Boolean) Whether to reapply changes if the state of the entries drifts, i.e. if entries are managed externally
 
 <a id="nestedblock--entry"></a>
 ### Nested Schema for `entry`

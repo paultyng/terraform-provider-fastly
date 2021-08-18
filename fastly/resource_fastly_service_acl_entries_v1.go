@@ -34,11 +34,20 @@ func resourceServiceAclEntriesV1() *schema.Resource {
 				ForceNew:    true,
 				Description: "The ID of the ACL that the items belong to",
 			},
+			"manage_entries": {
+				Type:        schema.TypeBool,
+				Default:     false,
+				Optional:    true,
+				Description: "Whether to reapply changes if the state of the entries drifts, i.e. if entries are managed externally",
+			},
 			"entry": {
 				Type:        schema.TypeSet,
 				Optional:    true,
 				Description: "ACL Entries",
 				MaxItems:    gofastly.MaximumACLSize,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					return d.HasChange("acl_id") == false && d.Get("manage_entries") == false
+				},
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"id": {
