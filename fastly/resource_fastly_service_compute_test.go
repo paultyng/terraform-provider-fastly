@@ -105,6 +105,12 @@ func TestAccFastlyServiceCompute_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"fastly_service_compute.foo", "name", name),
 					resource.TestCheckResourceAttr(
+						"fastly_service_compute.foo", "default_ttl", "0"),
+					resource.TestCheckResourceAttr(
+						"fastly_service_compute.foo", "stale_if_error", "true"),
+					resource.TestCheckResourceAttr(
+						"fastly_service_compute.foo", "stale_if_error_ttl", "43200"),
+					resource.TestCheckResourceAttr(
 						"fastly_service_compute.foo", "comment", "Managed by Terraform"),
 					resource.TestCheckResourceAttr(
 						"fastly_service_compute.foo", "version_comment", ""),
@@ -151,10 +157,68 @@ func testAccCheckServiceComputeDestroy(s *terraform.State) error {
 	return nil
 }
 
+func TestAccFastlyServiceCompute_createDefaultTTL(t *testing.T) {
+	var service gofastly.ServiceDetail
+	name := fmt.Sprintf("tf-test-%s", acctest.RandString(10))
+	domain := fmt.Sprintf("fastly-test.tf-%s.com", acctest.RandString(10))
+	backendName := fmt.Sprintf("%s.aws.amazon.com", acctest.RandString(3))
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviders,
+		CheckDestroy:      testAccCheckServiceV1Destroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccServiceComputeConfig_backendTTL(name, domain, backendName, 3400),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckServiceV1Exists("fastly_service_compute.foo", &service),
+					resource.TestCheckResourceAttr(
+						"fastly_service_compute.foo", "default_ttl", "3400"),
+					resource.TestCheckResourceAttr(
+						"fastly_service_compute.foo", "stale_if_error", "true"),
+					resource.TestCheckResourceAttr(
+						"fastly_service_compute.foo", "stale_if_error_ttl", "43200"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccFastlyServiceCompute_createZeroDefaultTTL(t *testing.T) {
+	var service gofastly.ServiceDetail
+	name := fmt.Sprintf("tf-test-%s", acctest.RandString(10))
+	domain := fmt.Sprintf("fastly-test.tf-%s.com", acctest.RandString(10))
+	backendName := fmt.Sprintf("%s.aws.amazon.com", acctest.RandString(3))
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviders,
+		CheckDestroy:      testAccCheckServiceV1Destroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccServiceComputeConfig_backendZeroTTL(name, domain, backendName, 0),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckServiceV1Exists("fastly_service_compute.foo", &service),
+					resource.TestCheckResourceAttr(
+						"fastly_service_compute.foo", "default_ttl", "0"),
+					resource.TestCheckResourceAttr(
+						"fastly_service_compute.foo", "stale_if_error", "true"),
+					resource.TestCheckResourceAttr(
+						"fastly_service_compute.foo", "stale_if_error_ttl", "0"),
+				),
+			},
+		},
+	})
+}
+
 func testAccServiceComputeConfig(name, domain string) string {
 	return fmt.Sprintf(`
 resource "fastly_service_compute" "foo" {
   name = "%s"
+  default_ttl = 0
+  stale_if_error = true
+  stale_if_error_ttl = 0
+
   domain {
     name    = "%s"
     comment = "tf-testing-domain"
@@ -170,4 +234,57 @@ resource "fastly_service_compute" "foo" {
   force_destroy = true
   activate = false
 }`, name, domain)
+}
+
+func testAccServiceComputeConfig_backendTTL(name, domain, backend string, ttl uint) string {
+	return fmt.Sprintf(`
+resource "fastly_service_compute" "foo" {
+  name = "%s"
+  default_ttl = %d
+  stale_if_error = true
+
+  domain {
+    name    = "%s"
+    comment = "tf-testing-domain"
+  }
+
+  backend {
+    address = "%s"
+    name    = "tf -test backend"
+  }
+
+  package {
+    filename = "test_fixtures/package/valid.tar.gz"
+	source_code_hash = filesha512("test_fixtures/package/valid.tar.gz")
+  }
+
+  force_destroy = true
+}`, name, ttl, domain, backend)
+}
+
+func testAccServiceComputeConfig_backendZeroTTL(name, domain, backend string, ttl uint) string {
+	return fmt.Sprintf(`
+resource "fastly_service_compute" "foo" {
+  name = "%s"
+  default_ttl = %d
+  stale_if_error = true
+  stale_if_error_ttl = 0
+
+  domain {
+    name    = "%s"
+    comment = "tf-testing-domain"
+  }
+
+  backend {
+    address = "%s"
+    name    = "tf-test-backend"
+  }
+
+  package {
+    filename = "test_fixtures/package/valid.tar.gz"
+	source_code_hash = filesha512("test_fixtures/package/valid.tar.gz")
+  }
+
+  force_destroy = true
+}`, name, ttl, domain, backend)
 }

@@ -284,6 +284,8 @@ $ terraform import fastly_service_v1.demo xxxxxxxxxxxxxxxxxxxx@2
 - **s3logging** (Block Set) (see [below for nested schema](#nestedblock--s3logging))
 - **snippet** (Block Set) (see [below for nested schema](#nestedblock--snippet))
 - **splunk** (Block Set) (see [below for nested schema](#nestedblock--splunk))
+- **stale_if_error** (Boolean) Enables serving a stale object if there is an error
+- **stale_if_error_ttl** (Number) The default time-to-live (TTL) for serving the stale object for the version
 - **sumologic** (Block Set) (see [below for nested schema](#nestedblock--sumologic))
 - **syslog** (Block Set) (see [below for nested schema](#nestedblock--syslog))
 - **vcl** (Block Set) (see [below for nested schema](#nestedblock--vcl))

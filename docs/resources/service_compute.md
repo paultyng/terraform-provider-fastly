@@ -89,6 +89,8 @@ $ terraform import fastly_service_compute.demo xxxxxxxxxxxxxxxxxxxx@2
 - **bigquerylogging** (Block Set) (see [below for nested schema](#nestedblock--bigquerylogging))
 - **blobstoragelogging** (Block Set) (see [below for nested schema](#nestedblock--blobstoragelogging))
 - **comment** (String) Description field for the service. Default `Managed by Terraform`
+- **default_host** (String) The default hostname
+- **default_ttl** (Number) The default Time-to-live (TTL) for requests
 - **dictionary** (Block Set) (see [below for nested schema](#nestedblock--dictionary))
 - **director** (Block Set) (see [below for nested schema](#nestedblock--director))
 - **force_destroy** (Boolean) Services that are active cannot be destroyed. In order to destroy the Service, set `force_destroy` to `true`. Default `false`
@@ -116,6 +118,8 @@ $ terraform import fastly_service_compute.demo xxxxxxxxxxxxxxxxxxxx@2
 - **papertrail** (Block Set) (see [below for nested schema](#nestedblock--papertrail))
 - **s3logging** (Block Set) (see [below for nested schema](#nestedblock--s3logging))
 - **splunk** (Block Set) (see [below for nested schema](#nestedblock--splunk))
+- **stale_if_error** (Boolean) Enables serving a stale object if there is an error
+- **stale_if_error_ttl** (Number) The default time-to-live (TTL) for serving the stale object for the version
 - **sumologic** (Block Set) (see [below for nested schema](#nestedblock--sumologic))
 - **syslog** (Block Set) (see [below for nested schema](#nestedblock--syslog))
 - **version_comment** (String) Description field for the version
