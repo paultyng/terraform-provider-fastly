@@ -361,7 +361,7 @@ func resourceServiceUpdate(ctx context.Context, d *schema.ResourceData, meta int
 	}
 
 	// Update the cloned version's comment. No new version is required for this.
-	if d.HasChange("version_comment") && !needsChange {
+	if d.HasChange("version_comment") && (!needsChange || isCreate) {
 		opts := gofastly.UpdateVersionInput{
 			ServiceID:      d.Id(),
 			ServiceVersion: d.Get("cloned_version").(int),
@@ -526,7 +526,7 @@ func resourceServiceRead(ctx context.Context, d *schema.ResourceData, meta inter
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	err = d.Set("version_comment", s.Version.Comment)
+	err = d.Set("version_comment", s.ActiveVersion.Comment)
 	if err != nil {
 		return diag.FromErr(err)
 	}

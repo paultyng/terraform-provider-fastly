@@ -404,7 +404,8 @@ func TestAccFastlyServiceV1_basic(t *testing.T) {
 	var service gofastly.ServiceDetail
 	name := fmt.Sprintf("tf-test-%s", acctest.RandString(10))
 	comment := fmt.Sprintf("tf-test-%s", acctest.RandString(10))
-	versionComment := fmt.Sprintf("tf-test-%s", acctest.RandString(10))
+	versionComment1 := fmt.Sprintf("tf-test-%s", acctest.RandString(10))
+	versionComment2 := fmt.Sprintf("tf-test-%s", acctest.RandString(10))
 	domainName1 := fmt.Sprintf("fastly-test.tf-%s.com", acctest.RandString(10))
 	domainName2 := fmt.Sprintf("fastly-test.tf-%s.com", acctest.RandString(10))
 
@@ -414,7 +415,7 @@ func TestAccFastlyServiceV1_basic(t *testing.T) {
 		CheckDestroy:      testAccCheckServiceV1Destroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccServiceV1Config(name, domainName1),
+				Config: testAccServiceV1Config_initWithVerstionComment(name, versionComment1, domainName1),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckServiceV1Exists("fastly_service_v1.foo", &service),
 					resource.TestCheckResourceAttr(
@@ -422,7 +423,7 @@ func TestAccFastlyServiceV1_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"fastly_service_v1.foo", "comment", "Managed by Terraform"),
 					resource.TestCheckResourceAttr(
-						"fastly_service_v1.foo", "version_comment", ""),
+						"fastly_service_v1.foo", "version_comment", versionComment1),
 					resource.TestCheckResourceAttr(
 						"fastly_service_v1.foo", "active_version", "1"),
 					resource.TestCheckResourceAttr(
@@ -432,7 +433,7 @@ func TestAccFastlyServiceV1_basic(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccServiceV1Config_basicUpdate(name, comment, versionComment, domainName2),
+				Config: testAccServiceV1Config_basicUpdate(name, comment, versionComment2, domainName2),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckServiceV1Exists("fastly_service_v1.foo", &service),
 					resource.TestCheckResourceAttr(
@@ -440,7 +441,7 @@ func TestAccFastlyServiceV1_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"fastly_service_v1.foo", "comment", comment),
 					resource.TestCheckResourceAttr(
-						"fastly_service_v1.foo", "version_comment", versionComment),
+						"fastly_service_v1.foo", "version_comment", versionComment2),
 					resource.TestCheckResourceAttr(
 						"fastly_service_v1.foo", "active_version", "2"),
 					resource.TestCheckResourceAttr(
@@ -763,6 +764,26 @@ resource "fastly_service_v1" "foo" {
 
   force_destroy = true
 }`, name, domain)
+}
+
+func testAccServiceV1Config_initWithVerstionComment(name, versionComment, domain string) string {
+	return fmt.Sprintf(`
+resource "fastly_service_v1" "foo" {
+  name = "%s"
+  version_comment = "%s"
+
+  domain {
+    name    = "%s"
+    comment = "tf-testing-domain"
+  }
+
+  backend {
+    address = "aws.amazon.com"
+    name    = "amazon docs"
+  }
+
+  force_destroy = true
+}`, name, versionComment, domain)
 }
 
 func testAccServiceV1Config_default_host(name, domain, defaultHost string) string {
