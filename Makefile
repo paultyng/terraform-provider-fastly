@@ -144,4 +144,10 @@ validate-interface:
 lint:
 	golangci-lint run --verbose
 
+.PHONY: deps-update
+deps-update:
+	go get -u -d -t ./...
+	go mod tidy
+	if [ -d "vendor" ]; then go mod vendor; fi
+
 .PHONY: all build clean clean_test default errcheck fmt fmtcheck generate-docs goreleaser goreleaser-bin lint sweep test test-compile testacc validate-docs validate-interface vet
