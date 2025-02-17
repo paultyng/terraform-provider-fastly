@@ -22,7 +22,7 @@ The examples below demonstrate usage with AWS Route53 to configure DNS, and the 
 
 **Basic usage:**
 
-The following example demonstrates how to configured two subdomains (e.g. `a.example.com`, `b.example.com`).
+The following example demonstrates how to configure two subdomains (e.g. `a.example.com`, `b.example.com`).
 
 The workflow configures a `fastly_tls_subscription` resource, then a `aws_route53_record` resource for handling the creation of the 'challenge' DNS records (e.g. `_acme-challenge.a.example.com` and `_acme-challenge.b.example.com`).
 
