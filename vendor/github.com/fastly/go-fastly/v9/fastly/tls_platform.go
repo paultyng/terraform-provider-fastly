@@ -60,8 +60,8 @@ func (i *ListBulkCertificatesInput) formatFilters() map[string]string {
 	result := map[string]string{}
 	pairings := map[string]any{
 		"filter[tls_domains.id][match]": i.FilterTLSDomainsIDMatch,
-		"page[size]":                    i.PageSize,
-		"page[number]":                  i.PageNumber,
+		jsonapi.QueryParamPageSize:      i.PageSize,
+		jsonapi.QueryParamPageNumber:    i.PageNumber,
 		"sort":                          i.Sort,
 	}
 	for key, value := range pairings {
@@ -85,7 +85,7 @@ func (c *Client) ListBulkCertificates(i *ListBulkCertificatesInput) ([]*BulkCert
 	filters := &RequestOptions{
 		Params: i.formatFilters(),
 		Headers: map[string]string{
-			"Accept": "application/vnd.api+json", // this is required otherwise the filters don't work
+			"Accept": jsonapi.MediaType, // this is required otherwise the filters don't work
 		},
 	}
 
@@ -236,6 +236,10 @@ func (c *Client) DeleteBulkCertificate(i *DeleteBulkCertificateInput) error {
 
 	path := ToSafeURL("tls", "bulk", "certificates", i.ID)
 
-	_, err := c.Delete(path, nil)
-	return err
+	ignored, err := c.Delete(path, nil)
+	if err != nil {
+		return err
+	}
+	defer ignored.Body.Close()
+	return nil
 }

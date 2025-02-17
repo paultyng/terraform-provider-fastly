@@ -117,8 +117,8 @@ func (i *ListWAFRuleExclusionsInput) formatFilters() map[string]string {
 		"filter[exclusion_type]":           i.FilterExclusionType,
 		"filter[name]":                     i.FilterName,
 		"filter[waf_rules.modsec_rule_id]": i.FilterModSedID,
-		"page[size]":                       i.PageSize,
-		"page[number]":                     i.PageNumber,
+		jsonapi.QueryParamPageSize:         i.PageSize,
+		jsonapi.QueryParamPageNumber:       i.PageNumber,
 		"include":                          include,
 	}
 
@@ -304,6 +304,10 @@ func (c *Client) DeleteWAFRuleExclusion(i *DeleteWAFRuleExclusionInput) error {
 
 	path := ToSafeURL("waf", "firewalls", i.WAFID, "versions", strconv.Itoa(i.WAFVersionNumber), "exclusions", strconv.Itoa(i.Number))
 
-	_, err := c.Delete(path, nil)
-	return err
+	ignored, err := c.Delete(path, nil)
+	if err != nil {
+		return err
+	}
+	defer ignored.Body.Close()
+	return nil
 }
