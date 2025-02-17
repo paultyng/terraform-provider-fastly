@@ -55,8 +55,8 @@ type ListServiceAuthorizationsInput struct {
 func (i *ListServiceAuthorizationsInput) formatFilters() map[string]string {
 	result := map[string]string{}
 	pairings := map[string]int{
-		"page[size]":   i.PageSize,
-		"page[number]": i.PageNumber,
+		jsonapi.QueryParamPageSize:   i.PageSize,
+		jsonapi.QueryParamPageNumber: i.PageNumber,
 	}
 
 	for key, value := range pairings {
@@ -219,7 +219,10 @@ func (c *Client) DeleteServiceAuthorization(i *DeleteServiceAuthorizationInput) 
 
 	path := ToSafeURL("service-authorizations", i.ID)
 
-	_, err := c.Delete(path, nil)
-
-	return err
+	ignored, err := c.Delete(path, nil)
+	if err != nil {
+		return err
+	}
+	defer ignored.Body.Close()
+	return nil
 }

@@ -63,8 +63,8 @@ type ListWAFsInput struct {
 func (i *ListWAFsInput) formatFilters() map[string]string {
 	result := map[string]string{}
 	pairings := map[string]any{
-		"page[size]":                     i.PageSize,
-		"page[number]":                   i.PageNumber,
+		jsonapi.QueryParamPageSize:       i.PageSize,
+		jsonapi.QueryParamPageNumber:     i.PageNumber,
 		"filter[service_id]":             i.FilterService,
 		"filter[service_version_number]": i.FilterVersion,
 		"include":                        i.Include,
@@ -273,8 +273,12 @@ func (c *Client) DeleteWAF(i *DeleteWAFInput) error {
 
 	path := ToSafeURL("waf", "firewalls", i.ID)
 
-	_, err := c.DeleteJSONAPI(path, i, nil)
-	return err
+	ignored, err := c.DeleteJSONAPI(path, i, nil)
+	if err != nil {
+		return err
+	}
+	defer ignored.Body.Close()
+	return nil
 }
 
 // infoResponse is used to pull the links and meta from the result.

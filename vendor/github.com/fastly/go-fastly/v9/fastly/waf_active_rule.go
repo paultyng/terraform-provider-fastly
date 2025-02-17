@@ -59,8 +59,8 @@ func (i *ListWAFActiveRulesInput) formatFilters() map[string]string {
 		"filter[status]":                            i.FilterStatus,
 		"filter[waf_rule_revision][message]":        i.FilterMessage,
 		"filter[waf_rule_revision][modsec_rule_id]": i.FilterModSedID,
-		"page[size]":                                i.PageSize,
-		"page[number]":                              i.PageNumber,
+		jsonapi.QueryParamPageSize:                  i.PageSize,
+		jsonapi.QueryParamPageNumber:                i.PageNumber,
 		"include":                                   i.Include,
 	}
 
@@ -298,6 +298,10 @@ func (c *Client) DeleteWAFActiveRules(i *DeleteWAFActiveRulesInput) error {
 
 	path := ToSafeURL("waf", "firewalls", i.WAFID, "versions", strconv.Itoa(i.WAFVersionNumber), "active-rules")
 
-	_, err := c.DeleteJSONAPIBulk(path, i.Rules, nil)
-	return err
+	ignored, err := c.DeleteJSONAPIBulk(path, i.Rules, nil)
+	if err != nil {
+		return err
+	}
+	defer ignored.Body.Close()
+	return nil
 }
