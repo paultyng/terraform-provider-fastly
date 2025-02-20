@@ -125,6 +125,10 @@ func (h *DictionaryServiceAttributeHandler) Update(_ context.Context, _ *schema.
 // Delete deletes the resource.
 func (h *DictionaryServiceAttributeHandler) Delete(_ context.Context, d *schema.ResourceData, resource map[string]any, serviceVersion int, conn *gofastly.Client) error {
 	if !resource["force_destroy"].(bool) {
+		if resource["write_only"].(bool) {
+			return fmt.Errorf("cannot delete dictionary (%s), it is write_only, so it may contain data. Set force_destroy to true and apply it before making this change", resource["dictionary_id"].(string))
+		}
+
 		mayDelete, err := isDictionaryEmpty(d.Id(), resource["dictionary_id"].(string), conn)
 		if err != nil {
 			return err
